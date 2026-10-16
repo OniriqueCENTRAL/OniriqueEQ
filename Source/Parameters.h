@@ -55,13 +55,25 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     p.push_back (std::make_unique<AudioParameterBool> (ParameterID { ids::peqPower, 1 }, "EQ On", true));
     auto hz = [] (float v, int) { return v >= 1000.0f ? String (v / 1000.0f, v >= 10000.0f ? 1 : 2) + " kHz" : String (juce::roundToInt (v)) + " Hz"; };
     auto qText = [] (float v, int) { return String (v, 2); };
-    const int defType[8] { 3, 1, 0, 0, 0, 2, 0, 4 };      // LOW CUT, LOW SHELF, BELL x3, HIGH SHELF, BELL, HIGH CUT
-    const float defFreq[8] { 30.0f, 100.0f, 300.0f, 1000.0f, 3000.0f, 10000.0f, 6000.0f, 18000.0f };
-    const float defQ[8] { 0.71f, 0.71f, 1.0f, 1.0f, 1.0f, 0.71f, 1.0f, 0.71f };
+    int defType[8] { 3, 1, 0, 0, 0, 2, 0, 4 };      // LOW CUT, LOW SHELF, BELL x3, HIGH SHELF, BELL, HIGH CUT
+    float defFreq[8] { 30.0f, 100.0f, 300.0f, 1000.0f, 3000.0f, 10000.0f, 6000.0f, 18000.0f };
+    float defQ[8] { 0.71f, 0.71f, 1.0f, 1.0f, 1.0f, 0.71f, 1.0f, 0.71f };
+    float defGain[8] {};
+    bool defOn[8] {};
+   #if ONIRIQUE_UI_TEST
+    // essais locaux uniquement : visuel de démo de la boutique (ONIRIQUE_UI_TEST=...demo) avec une vraie courbe au repos
+    // (preset Vocal Clarity) : l'outil de démo ramène chaque réglage à sa valeur par défaut
+    if (SystemStats::getEnvironmentVariable ("ONIRIQUE_UI_TEST", {}).contains ("demo"))
+    {
+        const int t[4] { 3, 0, 0, 2 };
+        const float f[4] { 80.0f, 250.0f, 3200.0f, 11000.0f }, g[4] { 0.0f, -2.5f, 2.0f, 3.0f }, q[4] { 0.71f, 1.2f, 0.8f, 0.71f };
+        for (int i = 0; i < 4; ++i) { defOn[i] = true; defType[i] = t[i]; defFreq[i] = f[i]; defGain[i] = g[i]; defQ[i] = q[i]; }
+    }
+   #endif
     for (int b = 0; b < 8; ++b)
     {
         const String n = "Band " + String (b + 1) + " ";
-        p.push_back (std::make_unique<AudioParameterBool> (ParameterID { ids::peqOn[b], 1 }, n + "On", false));
+        p.push_back (std::make_unique<AudioParameterBool> (ParameterID { ids::peqOn[b], 1 }, n + "On", defOn[b]));
         p.push_back (std::make_unique<AudioParameterChoice> (ParameterID { ids::peqType[b], 1 }, n + "Type",
             StringArray { "Bell", "Low Shelf", "High Shelf", "Low Cut", "High Cut", "Notch" }, defType[b]));
         NormalisableRange<float> fr (20.0f, 20000.0f, 0.1f);
@@ -69,7 +81,7 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
         p.push_back (std::make_unique<AudioParameterFloat> (ParameterID { ids::peqFreq[b], 1 }, n + "Freq", fr, defFreq[b],
                                                             Attr().withLabel ("Hz").withStringFromValueFunction (hz)));
         p.push_back (std::make_unique<AudioParameterFloat> (ParameterID { ids::peqGain[b], 1 }, n + "Gain",
-            NormalisableRange<float> (-18.0f, 18.0f, 0.1f), 0.0f, Attr().withLabel ("dB").withStringFromValueFunction (dbText)));
+            NormalisableRange<float> (-18.0f, 18.0f, 0.1f), defGain[b], Attr().withLabel ("dB").withStringFromValueFunction (dbText)));
         NormalisableRange<float> qr (0.1f, 10.0f, 0.01f);
         qr.setSkewForCentre (1.0f);
         p.push_back (std::make_unique<AudioParameterFloat> (ParameterID { ids::peqQ[b], 1 }, n + "Q", qr, defQ[b],
