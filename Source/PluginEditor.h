@@ -34,6 +34,7 @@ private:
     juce::Image backdropLayer;   // vidée au redimensionnement
     float layersScale = 0.0f;
     juce::Rectangle<float> logoRect, signalRect;
+    juce::Rectangle<float> lastStreak;   // impulsion de la ligne de signal à l'image précédente (zone à effacer)
     std::vector<std::pair<juce::Point<float>, float>> stars;   // position, taille
     double clock = 0.0;
     int frame = 0;

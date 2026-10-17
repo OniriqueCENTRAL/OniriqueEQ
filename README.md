@@ -18,6 +18,9 @@ Les tailles des FIR doublent à 88.2 / 96 kHz (même résolution en Hz). Les ban
 FIR (leur gain bouge à chaque instant), après le FIR. Chaque réglage fabrique un nouveau FIR sur un thread à part, appliqué en
 fondu de 50 ms (juce::dsp::Convolution, partitions non uniformes, sans latence ajoutée).
 
+Réglage d'une bande : bulle au-dessus de son point (marche, fréquence, Q / gain, pente, écoute au casque, retirer) et panneau
+flottant en bas de l'analyseur (type, pente, FREQ / GAIN / Q, bande précédente / suivante, DYN + seuil).
+
 Types : bell, low shelf, high shelf, notch, low cut / high cut 12-24-36-48 dB/oct, mode DYNAMIQUE par bande, écoute d'une
 bande (casque : maintenir le point de la bande), OUTPUT, BYPASS (signal direct aligné sur la latence), presets d'usine +
 utilisateur (%APPDATA%/Onirique/EQ/Presets, *.oeqpreset), licence ONIRIQUE (identifiant `onirique-eq`).

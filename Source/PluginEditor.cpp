@@ -56,6 +56,8 @@ OniriqueEQAudioProcessorEditor::OniriqueEQAudioProcessorEditor (OniriqueEQAudioP
     if (juce::SystemStats::getEnvironmentVariable ("ONIRIQUE_UI_TEST", {}).contains ("demo"))
         for (const auto& e : processor.presets.list())
             if (e.name == "Vocal Clarity") processor.presets.load (e);
+    if (juce::SystemStats::getEnvironmentVariable ("ONIRIQUE_UI_TEST", {}).contains ("panel"))
+        eq.showBandPanel (0);
    #endif
 
     startTimerHz (60);
@@ -76,8 +78,16 @@ void OniriqueEQAudioProcessorEditor::timerCallback()
     for (auto* a : animated) a->tick();
 
     // en-tête vivant : lueur du logo, signal qui parcourt la ligne, étoiles qui scintillent
-    repaint (logoRect.expanded (logoRect.getHeight() * 0.4f).getSmallestIntegerContainer());
-    repaint (signalRect.getSmallestIntegerContainer());
+    // (lueur du logo à 30 images/s : elle respire en 5 s ; le signal : seulement la zone de l'impulsion, pas toute la largeur)
+    if ((frame & 1) == 0)
+        repaint (logoRect.expanded (logoRect.getHeight() * 0.4f).getSmallestIntegerContainer());
+    {
+        const float u = scale(), W = (float) getWidth(), len = 130.0f * u, span = W - 44.0f * u + len;
+        const float px = 22.0f * u - len + std::fmod ((float) clock * 0.24f, 1.0f) * span;
+        const auto streak = juce::Rectangle<float> (px, signalRect.getY(), len, signalRect.getHeight()).expanded (6.0f * u, 0.0f);
+        repaint (streak.getUnion (lastStreak).getIntersection (signalRect).getSmallestIntegerContainer());
+        lastStreak = streak;
+    }
     if ((frame & 1) == 0)
         for (const auto& st : stars)
             repaint (juce::Rectangle<float> (st.second * 2.4f, st.second * 2.4f).withCentre (st.first).getSmallestIntegerContainer());
