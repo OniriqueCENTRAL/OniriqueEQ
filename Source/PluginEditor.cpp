@@ -170,12 +170,19 @@ void OniriqueEQAudioProcessorEditor::paintBackdrop (juce::Graphics& g)
 {
     const float u = scale();
     const float W = (float) getWidth(), H = (float) getHeight();
+    // DA PRO SERIES : noir profond, lueurs rouges très discrètes, grain fin
     g.fillAll (ui::night);
-    g.setGradientFill (juce::ColourGradient (ui::blood.withAlpha (0.85f), 0.0f, 0.0f, ui::night.withAlpha (0.0f), 0.0f, H * 0.62f, false));
+    g.setGradientFill (juce::ColourGradient (ui::blood.withAlpha (0.55f), W * 0.22f, H * 0.45f, ui::night.withAlpha (0.0f), W * 0.22f + W * 0.6f, H * 0.45f, true));
     g.fillRect (getLocalBounds());
-    g.setGradientFill (juce::ColourGradient (ui::ember.withAlpha (0.20f), W * 0.74f, -40.0f * u,
-                                             ui::ember.withAlpha (0.0f), W * 0.74f + W * 0.42f, -40.0f * u, true));
+    g.setGradientFill (juce::ColourGradient (ui::blood.withAlpha (0.22f), W * 0.92f, H * 1.05f, ui::night.withAlpha (0.0f), W * 0.92f - W * 0.45f, H * 1.05f, true));
     g.fillRect (getLocalBounds());
+    juce::Random rnd (21);
+    for (int i = 0; i < 120; ++i)
+    {
+        const float x = rnd.nextFloat() * W, y = rnd.nextFloat() * H, s = (0.5f + 1.2f * rnd.nextFloat() * rnd.nextFloat()) * u;
+        g.setColour (ui::mist.withAlpha (0.03f + 0.07f * rnd.nextFloat()));
+        g.fillEllipse (x, y, s, s);
+    }
 }
 
 void OniriqueEQAudioProcessorEditor::paintStar (juce::Graphics& g, juce::Point<float> c, float r, float alpha)
@@ -228,12 +235,10 @@ void OniriqueEQAudioProcessorEditor::paintHeader (juce::Graphics& g)
         const float w2 = ui::textWidth (f2, "EQ") + 2.0f;
         const float y = 20.0f * u, hh = 36.0f * u;
         g.setFont (f1);
-        g.setColour (ui::ember.withAlpha (0.35f));
-        g.drawText ("ONIRIQUE", juce::Rectangle<float> (x, y + 1.0f * u, w1, hh), juce::Justification::centredLeft, false);
         g.setColour (ui::mist);
         g.drawText ("ONIRIQUE", juce::Rectangle<float> (x, y, w1, hh), juce::Justification::centredLeft, false);
-        g.setFont (f2);
-        g.setColour (ui::haze);
+        g.setFont (f1);
+        g.setColour (ui::ember);
         g.drawText ("EQ", juce::Rectangle<float> (x + w1 + 10.0f * u, y, w2, hh), juce::Justification::centredLeft, false);
         g.setColour (ui::haze.withAlpha (0.8f));
         g.setFont (ui::font (ui::Face::mono, 11.0f * u, false, 0.12f));

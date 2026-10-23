@@ -20,6 +20,7 @@ private:
     void paintStar (juce::Graphics&, juce::Point<float> c, float r, float alpha);
 
     OniriqueEQAudioProcessor& processor;
+    onirique::ui::FontScope fontScope;   // polices de la charte, le temps que l'interface est ouverte
     OniriqueLookAndFeel lnf;
     juce::TooltipWindow tooltipWindow { this, 600 };
 

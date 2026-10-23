@@ -1,4 +1,5 @@
 #include "UIKit.h"
+#include <OniriqueLicenseData.h>
 #include "OniriqueKnob.h"
 #include "OniriqueWindowSize.h"
 #include <BinaryData.h>
@@ -42,10 +43,45 @@ void drawValuePill (juce::Graphics& g, juce::Rectangle<float> r, const juce::Str
 } // namespace
 
 //==============================================================================
+namespace
+{
+// les polices de la charte, partagées par les interfaces ouvertes (thread de l'interface uniquement) : créées à
+// l'ouverture de la première, détruites à la fermeture de la dernière. Seuls un compteur et un pointeur brut sont
+// statiques : rien n'est détruit au déchargement du plugin.
+struct Faces
+{
+    juce::Typeface::Ptr display, body, mono, monoBold;
+};
+Faces* faces = nullptr;
+int faceUsers = 0;
+} // namespace
+
+ui::FontScope::FontScope()
+{
+    if (faceUsers++ == 0)
+    {
+        faces = new Faces();
+        faces->display = juce::Typeface::createSystemTypefaceFor (OniriqueLicenseData::Unbounded800_ttf, OniriqueLicenseData::Unbounded800_ttfSize);
+        faces->body = juce::Typeface::createSystemTypefaceFor (OniriqueLicenseData::HankenGrotesk600_ttf, OniriqueLicenseData::HankenGrotesk600_ttfSize);
+        faces->mono = juce::Typeface::createSystemTypefaceFor (OniriqueLicenseData::JetBrainsMono500_ttf, OniriqueLicenseData::JetBrainsMono500_ttfSize);
+        faces->monoBold = juce::Typeface::createSystemTypefaceFor (OniriqueLicenseData::JetBrainsMono600_ttf, OniriqueLicenseData::JetBrainsMono600_ttfSize);
+    }
+}
+
+ui::FontScope::~FontScope()
+{
+    if (--faceUsers == 0) { delete faces; faces = nullptr; }
+}
+
 juce::Font ui::font (Face f, float h, bool bold, float kerning)
 {
-    static const char* names[] { "Bahnschrift", "Segoe UI", "Cascadia Mono" };
-    juce::Font fnt (juce::FontOptions (names[(int) f], std::max (4.0f, h), bold ? juce::Font::bold : juce::Font::plain));
+    h = std::max (4.0f, h);
+    const juce::Typeface::Ptr tf = faces == nullptr ? nullptr
+                                 : f == Face::display ? faces->display : f == Face::body ? faces->body : (bold ? faces->monoBold : faces->mono);
+    // Unbounded est très large : un peu plus petit que la hauteur demandée, pour garder les mêmes encombrements
+    juce::Font fnt = tf != nullptr ? juce::Font (juce::FontOptions (tf).withHeight (f == Face::display ? h * 0.86f : h))
+                                   : juce::Font (juce::FontOptions (f == Face::display ? "Bahnschrift" : f == Face::body ? "Segoe UI" : "Cascadia Mono",
+                                                                    h, bold ? juce::Font::bold : juce::Font::plain));
     if (kerning != 0.0f) fnt.setExtraKerningFactor (kerning);
     return fnt;
 }
