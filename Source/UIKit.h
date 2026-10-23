@@ -2,6 +2,7 @@
 
 #include "License/LicenseOverlay.h"
 #include "PluginProcessor.h"
+#include "SpectrumSmoother.h"
 
 #include <array>
 #include <map>
@@ -323,10 +324,9 @@ public:
     static void showBandMenu (juce::Component& target, juce::AudioProcessorValueTreeState&, int band, juce::Point<int> screenPos);
 
 private:
-    static constexpr int kOrder = 13, kN = 1 << kOrder, kPts = 320, kPeq = onirique::ParametricEQ::kBands;
+    static constexpr int kOrder = 13, kN = 1 << kOrder, kPts = 384, kPeq = onirique::ParametricEQ::kBands;
     static constexpr float kEqRange = 20.0f;
 
-    struct PointMap { int b0 = 1, b1 = 1; float pos = 1.0f, width = 1.0f; bool interp = true; };
     void buildMap (double fs);
     bool analyse (onirique::SpectrumTap&, std::vector<float>& hist, int& writePos, std::array<float, kPts>& spec);   // true : le spectre a bougé
     int tickCount = 0;
@@ -354,7 +354,7 @@ private:
     bool active = true;
     juce::dsp::FFT fft { kOrder };
     std::vector<float> window, histIn, histOut, scratch, fftBuf;
-    std::array<PointMap, kPts> pmap {};
+    onirique::ui::SpectrumSmoother smoother;   // lissage gaussien des spectres, poids calculés une fois
     double mapFs = 0.0;
     int writeIn = 0, writeOut = 0;
     float windowGain = 1.0f;
