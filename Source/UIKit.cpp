@@ -1526,17 +1526,17 @@ void SpectrumAnalyzer::paint (juce::Graphics& g)
     g.drawImageTransformed (gridLayer, toLogical);
 
     {
-        // ---- spectres : entrée (voile discret), sortie (dégradé os + trait net)
+        // ---- spectres : entrée (trait discret), sortie (dégradé os + trait net)
         const auto plot = plotArea();
         const float u = unit();
         juce::Graphics::ScopedSaveState ss (g);
         g.reduceClipRegion (plot.toNearestInt());
         std::array<float, kPts> yIn, yOut;
         for (int i = 0; i < kPts; ++i) { yIn[(size_t) i] = ySpec (specIn[(size_t) i]); yOut[(size_t) i] = ySpec (specOut[(size_t) i]); }
-        g.setGradientFill (juce::ColourGradient (ui::haze.withAlpha (0.16f), 0.0f, plot.getY(), ui::haze.withAlpha (0.0f), 0.0f, plot.getBottom(), false));
-        g.fillPath (smoothPath (yIn, true, plot.getBottom()));
-        g.setColour (ui::haze.withAlpha (0.42f));
-        g.strokePath (smoothPath (yIn, false, 0.0f), juce::PathStrokeType (std::max (1.0f, 1.0f * u)));
+        // entrée : un simple trait discret, sans surface ; seule la sortie est remplie (deux surfaces l'une sur l'autre
+        // brouillaient la lecture dès qu'une voix passait)
+        g.setColour (ui::haze.withAlpha (0.30f));
+        g.strokePath (smoothPath (yIn, false, 0.0f), juce::PathStrokeType (std::max (1.0f, 1.0f * u), juce::PathStrokeType::curved));
 
         juce::ColourGradient og (ui::bone.withAlpha (0.34f), 0.0f, plot.getY(), ui::bone.withAlpha (0.02f), 0.0f, plot.getBottom(), false);
         og.addColour (0.55, ui::bone.withAlpha (0.12f));
