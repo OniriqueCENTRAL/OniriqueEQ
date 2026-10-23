@@ -299,6 +299,8 @@ public:
     // clic dans le vide (pas sur un point) : ferme le panneau de bande
     std::function<void()> onBackgroundClick;
     BandBubble bubble;   // au-dessus du point de la bande sélectionnée
+    // clic dans le vide (ici ou ailleurs dans le plugin) : la bulle se ferme ; elle revient dès qu'on choisit une bande
+    void closeBubble() noexcept { bubbleClosed = true; }
 
     // EQ paramétrique : bande sélectionnée (affichée dans la barre de réglage de la carte)
     std::function<void (int)> onSelect;
@@ -374,6 +376,7 @@ private:
     bool pending = false;
     int qFlashBand = -1, qFlashFrames = 0;   // étiquette "Q x.xx" affichée pendant le réglage à la molette
     void placeBubble();
+    bool bubbleClosed = false;
 };
 
 // Barre de réglage d'une bande de l'EQ paramétrique : n° + LED (on/off) + type (menu), "DYN" quand elle est dynamique.
@@ -450,6 +453,8 @@ public:
     void resized() override;
     void tick() override;
     void parentHierarchyChanged() override { resized(); }   // l'échelle vient de la fenêtre du plugin : relayout une fois rattachée
+
+    void mouseDown (const juce::MouseEvent&) override { analyzer.closeBubble(); panel.setOpen (false); }   // clic dans le vide
 
     SpectrumAnalyzer analyzer;
 

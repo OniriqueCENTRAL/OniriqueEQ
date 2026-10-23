@@ -11,6 +11,7 @@ public:
 
     void paint (juce::Graphics&) override;
     void resized() override;
+    void mouseDown (const juce::MouseEvent&) override { eq.analyzer.closeBubble(); }   // clic dans le vide : la bulle se ferme
 
 private:
     void timerCallback() override;
