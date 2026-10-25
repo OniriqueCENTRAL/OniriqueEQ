@@ -7,7 +7,7 @@
 #include "Parameters.h"
 #include "DSP/EqEngine.h"
 #include "DSP/SpectrumTap.h"
-#include "PresetManager.h"
+#include "StockPresets.h"
 
 class OniriqueEQAudioProcessor : public juce::AudioProcessor,
                                  private juce::AudioProcessorValueTreeState::Listener,
@@ -44,7 +44,9 @@ public:
     void setStateInformation (const void* data, int sizeInBytes) override;
 
     juce::AudioProcessorValueTreeState apvts;
-    onirique::PresetManager presets { apvts };
+    /** Les presets d'usine et ceux de l'utilisateur, la comparaison A/B : ce que montre la barre du haut. */
+    onirique::PresetBank presets { apvts, "EQ", onirique::eqpresets::stockPresets(), onirique::eqpresets::tagNames(),
+                                   onirique::eqpresets::notStored() };
     onirique::SpectrumTap inputTap, outputTap;   // analyseur : entrée et sortie du plugin (mono)
 
     // lus par l'interface
