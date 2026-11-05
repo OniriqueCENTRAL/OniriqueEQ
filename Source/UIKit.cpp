@@ -631,7 +631,7 @@ void PowerButton::paintButton (juce::Graphics& g, bool highlighted, bool)
     g.fillEllipse (disk);
     g.setColour (ui::ember.withAlpha (0.16f * on));
     g.fillEllipse (disk);
-    g.setColour (ui::line.interpolatedWith (ui::ember, on).withMultipliedAlpha (highlighted ? 1.0f : 0.9f));
+    g.setColour (ui::line.interpolatedWith (onirique::look::emberLit.withAlpha (0.5f), on).withMultipliedAlpha (highlighted ? 1.0f : 0.9f));
     g.drawEllipse (disk, std::max (1.0f, 1.4f * u));
 
     // pictogramme power : arc ouvert en haut + barre verticale, extrémités arrondies
@@ -666,7 +666,9 @@ void PillToggle::paintButton (juce::Graphics& g, bool highlighted, bool)
     juce::Path shape;
     shape.addRoundedRectangle (r, radius);
     ui::strokeGlow (g, shape, ui::ember, 1.5f * u, on * 0.8f);
-    g.setColour (juce::Colours::black.withAlpha (highlighted ? 0.28f : 0.36f));
+    g.setColour (juce::Colours::black.withAlpha (highlighted ? 0.38f : 0.45f));
+    g.fillPath (shape);
+    g.setGradientFill (juce::ColourGradient (juce::Colours::white.withAlpha (0.06f), 0.0f, r.getY(), juce::Colours::white.withAlpha (0.015f), 0.0f, r.getBottom(), false));
     g.fillPath (shape);
     if (ripple > 0.0f)
     {
@@ -681,11 +683,10 @@ void PillToggle::paintButton (juce::Graphics& g, bool highlighted, bool)
     }
     if (on > 0.001f)
     {
-        g.setGradientFill (juce::ColourGradient (ui::ember.withAlpha (0.30f * on), r.getX(), r.getY(),
-                                                 ui::blood.withAlpha (0.25f * on), r.getRight(), r.getBottom(), false));
+        g.setGradientFill (juce::ColourGradient (ui::ember.withAlpha (0.6f * on), 0.0f, r.getY(), onirique::look::emberDeep.withAlpha (0.6f * on), 0.0f, r.getBottom(), false));
         g.fillPath (shape);
     }
-    g.setColour (ui::line.interpolatedWith (ui::ember, on));
+    g.setColour (ui::line.interpolatedWith (onirique::look::emberLit.withAlpha (0.5f), on));
     g.strokePath (shape, juce::PathStrokeType (std::max (1.0f, 1.4f * u)));
 
     if (big)
@@ -717,8 +718,8 @@ void PillToggle::paintButton (juce::Graphics& g, bool highlighted, bool)
         g.fillEllipse (ledR);
 
         const auto textR = r.withTrimmedLeft (pad * 2.0f + d).withTrimmedRight (pad * 0.8f);
-        g.setColour (ui::haze.interpolatedWith (ui::bone, juce::jmax (on, highlighted ? 0.6f : 0.0f)));
-        g.setFont (ui::fitFont (ui::Face::body, r.getHeight() * (style == Style::mini ? 0.52f : 0.40f), textR.getWidth(), getButtonText(), true, 0.10f));
+        g.setColour (ui::haze.interpolatedWith (juce::Colours::white, juce::jmax (on, highlighted ? 0.6f : 0.0f)));
+        g.setFont (ui::fitFont (ui::Face::mono, r.getHeight() * (style == Style::mini ? 0.46f : 0.34f), textR.getWidth(), getButtonText(), false, 0.14f));
         g.drawText (getButtonText(), textR, juce::Justification::centred, false);
     }
 }
@@ -732,6 +733,7 @@ SpectrumAnalyzer::SpectrumAnalyzer (OniriqueEQAudioProcessor& p, bool fullScreen
     bubble.onRemoved = [this] { if (onBackgroundClick) onBackgroundClick(); };
     bubble.xOfHz = [this] (float hz) { return xOf (hz); };
     bubble.hzOfX = [this] (float x) { return hzOf (x); };
+    bubble.onResize = [this] { placeBubble(); };
     window.resize ((size_t) kN);
     double sum = 0.0;
     for (int i = 0; i < kN; ++i)
@@ -762,13 +764,13 @@ void SpectrumAnalyzer::placeBubble()
     if (! show) return;
     bubble.setBand (selected);
     const float u = unit();
-    const float w = 168.0f * u, bh = 70.0f * u;
+    bubble.setUnit (u);
+    const float w = bubble.idealWidth(), bh = 42.0f * u;
     const auto c = nodePos (selected);
     const auto area = getLocalBounds().toFloat();
-    const bool down = c.y - 14.0f * u - bh >= area.getY() + 2.0f;   // la bulle pointe vers le bas (elle est au-dessus du point)
-    bubble.setPointsDown (down);
-    auto r = juce::Rectangle<float> (w, bh).withCentre ({ c.x, down ? c.y - 14.0f * u - bh * 0.5f : c.y + 14.0f * u + bh * 0.5f });
-    r.setX (juce::jlimit (area.getX() + 2.0f, area.getRight() - w - 2.0f, r.getX()));
+    const bool above = c.y - 30.0f * u - bh >= area.getY() + 4.0f;
+    auto r = juce::Rectangle<float> (w, bh).withCentre ({ c.x, above ? c.y - 30.0f * u - bh * 0.5f : c.y + 30.0f * u + bh * 0.5f });
+    r.setX (juce::jlimit (area.getX() + 4.0f, std::max (area.getX() + 4.0f, area.getRight() - w - 4.0f), r.getX()));
     if (r.toNearestInt() != bubble.getBounds()) bubble.setBounds (r.toNearestInt());
 }
 
@@ -1538,15 +1540,11 @@ void SpectrumAnalyzer::paint (juce::Graphics& g)
         for (int i = 0; i < kPts; ++i) { yIn[(size_t) i] = ySpec (specIn[(size_t) i]); yOut[(size_t) i] = ySpec (specOut[(size_t) i]); }
         // entrée : un simple trait discret, sans surface ; seule la sortie est remplie (deux surfaces l'une sur l'autre
         // brouillaient la lecture dès qu'une voix passait)
-        g.setColour (ui::haze.withAlpha (0.30f));
-        g.strokePath (smoothPath (yIn, false, 0.0f), juce::PathStrokeType (std::max (1.0f, 1.0f * u), juce::PathStrokeType::curved));
-
-        juce::ColourGradient og (ui::bone.withAlpha (0.34f), 0.0f, plot.getY(), ui::bone.withAlpha (0.02f), 0.0f, plot.getBottom(), false);
-        og.addColour (0.55, ui::bone.withAlpha (0.12f));
-        g.setGradientFill (og);
+        // la DA de VOCALBOX : la sortie en surface de la couleur de l'interface (.55 -> .02), l'entrée en trait pâle (.35)
+        g.setGradientFill (juce::ColourGradient (ui::ember.withAlpha (0.55f), 0.0f, plot.getY(), ui::ember.withAlpha (0.02f), 0.0f, plot.getBottom(), false));
         g.fillPath (smoothPath (yOut, true, plot.getBottom()));
-        g.setColour (ui::bone.withAlpha (0.85f));
-        g.strokePath (smoothPath (yOut, false, 0.0f), juce::PathStrokeType (std::max (1.0f, 1.3f * u), juce::PathStrokeType::curved));
+        g.setColour (juce::Colour (244, 236, 236).withAlpha (0.35f));
+        g.strokePath (smoothPath (yIn, false, 0.0f), juce::PathStrokeType (std::max (1.0f, 1.6f * u), juce::PathStrokeType::curved));
     }
 
     g.setOpacity (1.0f);
@@ -1636,13 +1634,19 @@ const char* const kSlopeNames[] { "12 dB/oct", "24 dB/oct", "36 dB/oct", "48 dB/
 } // namespace
 
 //==============================================================================
+namespace
+{
+// la taille de texte de VOCALBOX (hauteur de capitale) dans les polices de l'EQ
+juce::Font cssFont (ui::Face f, float px, float em = 0.0f) { return ui::font (f, px * 1.25f, f == ui::Face::display, em); }
+}
+
 BandBubble::BandBubble (juce::AudioProcessorValueTreeState& s, std::atomic<bool>& h) : apvts (s), hold (h)
 {
     setBufferedToImage (true);   // redessinée seulement quand une valeur change (l'analyseur dessous bouge à chaque image)
     setRepaintsOnMouseActivity (false);
 }
 
-void BandBubble::set (const char* id, float v)
+void BandBubble::set (const juce::String& id, float v)
 {
     if (auto* p = apvts.getParameter (id))
     {
@@ -1652,21 +1656,79 @@ void BandBubble::set (const char* id, float v)
     }
 }
 
+// la bulle de la démo : une rangée de verre (rayon 16, 8 / 12 de marge) : power, « B3 · BELL », fréquence, gain / Q (rose),
+// pente des coupes (‹ 24 dB/oct ›), casque, retirer
+namespace
+{
+const char* const kBubbleTypes[] { "BELL", "LOW SHELF", "HIGH SHELF", "LOW CUT", "HIGH CUT", "NOTCH" };
+}
+
+juce::String BandBubble::valueText() const
+{
+    const int type = juce::jlimit (0, 5, juce::roundToInt (get (ids::peqType[band])));
+    const float q = get (ids::peqQ[band]), gd = get (ids::peqGain[band]);
+    const juce::String gain = (gd > 0.0f ? "+" : "") + juce::String (gd, 1) + " dB";
+    if (type == ParametricEQ::bell) return gain + juce::String::fromUTF8 (" · Q ") + juce::String (q, 2);
+    if (ParametricEQ::hasGain (type)) return gain;
+    return "Q " + juce::String (q, 2);
+}
+
+float BandBubble::idealWidth() const
+{
+    const float u = bubbleUnit();
+    const int type = juce::jlimit (0, 5, juce::roundToInt (get (ids::peqType[band])));
+    const auto nf = cssFont (ui::Face::display, 12.0f * u), mf = cssFont (ui::Face::mono, 11.0f * u, 0.12f), sf = cssFont (ui::Face::mono, 10.0f * u, 0.12f);
+    float w = 12.0f * u + 26.0f * u + 10.0f * u;
+    w += ui::textWidth (nf, "B" + juce::String (band + 1) + juce::String::fromUTF8 (" · ") + kBubbleTypes[type]) + 10.0f * u;
+    w += ui::textWidth (mf, "20.00 kHz") + 10.0f * u;
+    w += ui::textWidth (mf, valueText()) + 2.0f + 10.0f * u;
+    if (ParametricEQ::isCut (type)) w += 26.0f * u * 2.0f + ui::textWidth (sf, "48 dB/oct") + 4.0f * u + 10.0f * u;
+    return w + 26.0f * u * 2.0f + 10.0f * u + 12.0f * u;
+}
+
 void BandBubble::resized()
 {
-    const auto r = getLocalBounds().toFloat();
-    const float u = r.getHeight() / 70.0f, tip = 7.0f * u;
-    box = pointsDown ? r.withTrimmedBottom (tip) : r.withTrimmedTop (tip);
-    box = box.reduced (1.0f);
-    const float rowH = (box.getHeight() - 8.0f * u) / 3.0f, ic = rowH * 0.95f;
-    const auto row = [&] (int i) { return juce::Rectangle<float> (box.getX(), box.getY() + 4.0f * u + rowH * (float) i, box.getWidth(), rowH); };
-    zPower  = row (0).withWidth (ic + 8.0f * u).withTrimmedLeft (4.0f * u);
-    zClose  = row (0).withLeft (box.getRight() - ic - 8.0f * u).withTrimmedRight (4.0f * u);
-    zListen = zClose.translated (-zClose.getWidth() - 2.0f * u, 0.0f);
-    const auto r3 = row (2);
-    zUp   = r3.withLeft (box.getRight() - ic - 8.0f * u).withTrimmedRight (4.0f * u).withTrimmedBottom (rowH * 0.5f);
-    zDown = zUp.translated (0.0f, rowH * 0.5f);
-    zType = r3.withRight (zUp.getX());
+    const float u = bubbleUnit();
+    box = getLocalBounds().toFloat().reduced (1.0f);
+    const int type = juce::jlimit (0, 5, juce::roundToInt (get (ids::peqType[band])));
+    const auto nf = cssFont (ui::Face::display, 12.0f * u), mf = cssFont (ui::Face::mono, 11.0f * u, 0.12f), sf = cssFont (ui::Face::mono, 10.0f * u, 0.12f);
+    const float y = box.getCentreY() - 13.0f * u, h = 26.0f * u;
+    float x = box.getX() + 12.0f * u;
+    zPower = { x, y, 26.0f * u, h };
+    x += 26.0f * u + 10.0f * u;
+    const float nw = ui::textWidth (nf, "B" + juce::String (band + 1) + juce::String::fromUTF8 (" · ") + kBubbleTypes[type]);
+    zType = { x, y, nw, h };
+    x += nw + 10.0f * u;
+    zFreq = { x, y, ui::textWidth (mf, "20.00 kHz"), h };
+    x += zFreq.getWidth() + 10.0f * u;
+    zValue = { x, y, ui::textWidth (mf, valueText()) + 2.0f, h };
+    {
+        const float q = get (ids::peqQ[band]), gd = get (ids::peqGain[band]);
+        const juce::String gain = (gd > 0.0f ? "+" : "") + juce::String (gd, 1) + " dB";
+        if (type == ParametricEQ::bell)
+        {
+            const float gw = ui::textWidth (mf, gain + juce::String::fromUTF8 (" ·"));
+            zGain = zValue.withWidth (gw);
+            zQ = zValue.withTrimmedLeft (gw);
+        }
+        else if (ParametricEQ::hasGain (type)) { zGain = zValue; zQ = {}; }
+        else { zGain = {}; zQ = zValue; }
+        juce::ignoreUnused (q);
+    }
+    x += zValue.getWidth() + 10.0f * u;
+    if (ParametricEQ::isCut (type))
+    {
+        zDown = { x, y, 26.0f * u, h };
+        x += 26.0f * u;
+        zSlope = { x, y, ui::textWidth (sf, "48 dB/oct") + 4.0f * u, h };
+        x += zSlope.getWidth();
+        zUp = { x, y, 26.0f * u, h };
+        x += 26.0f * u + 10.0f * u;
+    }
+    else zUp = zDown = zSlope = {};
+    zListen = { x, y, 26.0f * u, h };
+    x += 26.0f * u + 10.0f * u;
+    zClose = { x, y, 26.0f * u, h };
 }
 
 BandBubble::Zone BandBubble::zoneAt (juce::Point<float> p) const noexcept
@@ -1678,6 +1740,9 @@ BandBubble::Zone BandBubble::zoneAt (juce::Point<float> p) const noexcept
     if (cut && zUp.contains (p)) return slopeUp;
     if (cut && zDown.contains (p)) return slopeDown;
     if (zType.contains (p)) return typeMenu;
+    if (zFreq.contains (p)) return dragFreq;
+    if (zGain.contains (p)) return dragGain;
+    if (zQ.contains (p)) return dragQ;
     return none;
 }
 
@@ -1687,73 +1752,71 @@ void BandBubble::tick()
     juce::String t;
     t << get (ids::peqOn[band]) << "|" << type << "|" << get (ids::peqFreq[band]) << "|" << get (ids::peqGain[band]) << "|"
       << get (ids::peqQ[band]) << "|" << get (ids::peqSlope[band]) << "|" << (listening ? 1 : 0);
-    if (t != shownText) { shownText = t; repaint(); }
+    if (t != shownText) { shownText = t; resized(); repaint(); if (onResize) onResize(); }
 }
 
 void BandBubble::paint (juce::Graphics& g)
 {
-    const float u = (float) getHeight() / 70.0f;
+    const float u = bubbleUnit();
     const int type = juce::jlimit (0, 5, juce::roundToInt (get (ids::peqType[band])));
-    const bool on = get (ids::peqOn[band]) > 0.5f, cut = ParametricEQ::isCut (type);
+    const bool on = get (ids::peqOn[band]) > 0.5f;
+    // verre sombre rgba(28,12,16,.86), liseré, reflet du haut
+    g.setColour (juce::Colour (28, 12, 16).withAlpha (0.94f));
+    g.fillRoundedRectangle (box, 16.0f * u);
+    g.setColour (juce::Colour (255, 235, 238).withAlpha (0.12f));
+    g.drawRoundedRectangle (box.reduced (0.5f), 16.0f * u, 1.0f);
+    g.setColour (juce::Colours::white.withAlpha (0.12f));
+    g.fillRect (box.withHeight (1.0f).reduced (16.0f * u, 0.0f).translated (0.0f, 1.0f));
 
-    // bulle + pointe vers le point de la bande
-    juce::Path shape;
-    shape.addRoundedRectangle (box, 6.0f * u);
-    const float tx = box.getCentreX(), tw = 6.0f * u;
-    juce::Path tipP;
-    if (pointsDown) tipP.addTriangle (tx - tw, box.getBottom() - 1.0f, tx + tw, box.getBottom() - 1.0f, tx, (float) getHeight() - 1.0f);
-    else            tipP.addTriangle (tx - tw, box.getY() + 1.0f, tx + tw, box.getY() + 1.0f, tx, 1.0f);
-    shape.addPath (tipP);
-    g.setColour (ui::night.withAlpha (0.93f));
-    g.fillPath (shape);
-    g.setColour (ui::line.interpolatedWith (ui::ember, 0.45f));
-    g.strokePath (shape, juce::PathStrokeType (std::max (1.0f, u)));
-
-    const float sw = std::max (1.2f, 1.5f * u);
-    auto hl = [&] (Zone z) { return hover == (int) z ? ui::bone : ui::haze; };
-    iconPower (g, zPower, on ? ui::ember : hl (power), sw);
-    iconHeadphones (g, zListen, listening ? ui::ember : hl (listen), sw);
-    iconCross (g, zClose, hl (close), sw);
-
-    const auto f = ui::font (ui::Face::mono, 12.0f * u, true);
-    g.setFont (f);
-    const auto textX = zPower.getRight() + 2.0f * u;
-    const float rowH = (box.getHeight() - 8.0f * u) / 3.0f;
-    auto row = [&] (int i) { return juce::Rectangle<float> (textX, box.getY() + 4.0f * u + rowH * (float) i, zListen.getX() - textX, rowH); };
-
-    g.setColour (on ? ui::bone : ui::haze);
-    g.drawText (hzText (get (ids::peqFreq[band])), row (0), juce::Justification::centredLeft, false);
-
-    juce::String l2;
-    if (ParametricEQ::hasGain (type))
+    // petits boutons (.tbtn2) : 26 x 26, rayon 9 ; allumé : braise .55 et lueur
+    auto button = [&] (juce::Rectangle<float> r, bool lit, Zone z)
     {
-        const float gd = get (ids::peqGain[band]);
-        l2 << (gd > 0.0f ? "+" : "") << juce::String (gd, 1) << " dB   ";
-    }
-    l2 << "Q: " << juce::String (get (ids::peqQ[band]), 3);
-    g.setColour (ui::mist.withAlpha (on ? 0.95f : 0.6f));
-    g.drawText (l2, row (1).withRight (box.getRight() - 6.0f * u), juce::Justification::centredLeft, false);
+        if (lit)
+        {
+            g.setColour (onirique::look::ember.withAlpha (0.3f));
+            g.fillRoundedRectangle (r.expanded (3.0f * u), 12.0f * u);
+            g.setColour (onirique::look::ember.withAlpha (0.55f));
+            g.fillRoundedRectangle (r, 9.0f * u);
+        }
+        else if (hover == (int) z)
+        {
+            g.setColour (juce::Colours::white.withAlpha (0.10f));
+            g.fillRoundedRectangle (r, 9.0f * u);
+        }
+        return lit || hover == (int) z ? juce::Colours::white : juce::Colour (0xffd8c6c8);
+    };
+    const float sw = 2.0f * u;
+    iconPower (g, zPower.withSizeKeepingCentre (14.0f * u, 14.0f * u), button (zPower, on, power), sw);
+    iconHeadphones (g, zListen.withSizeKeepingCentre (15.0f * u, 15.0f * u), button (zListen, listening, listen), sw);
+    iconCross (g, zClose.withSizeKeepingCentre (11.0f * u, 11.0f * u), button (zClose, false, close), sw);
 
-    // 3e ligne : type (menu) + pente des coupes (flèches)
-    const auto r3 = zType;
-    iconType (g, r3.withWidth (r3.getHeight() * 1.3f).withX (box.getX() + 5.0f * u), type, hover == typeMenu ? ui::bone : ui::ember, sw);
-    const juce::String t3 = cut ? juce::String (kSlopeNames[juce::jlimit (0, 3, juce::roundToInt (get (ids::peqSlope[band])))]) : juce::String (kTypeNames[type]);
-    g.setColour (hover == typeMenu ? ui::bone : ui::mist);
-    g.drawText (t3, r3.withTrimmedLeft (r3.getHeight() * 1.3f + 8.0f * u), juce::Justification::centredLeft, false);
-    if (cut)
+    g.setColour (hover == typeMenu ? juce::Colours::white : ui::bone);
+    g.setFont (cssFont (ui::Face::display, 12.0f * u));
+    g.drawText ("B" + juce::String (band + 1) + juce::String::fromUTF8 (" · ") + kBubbleTypes[type], zType, juce::Justification::centredLeft, false);
+    g.setFont (cssFont (ui::Face::mono, 11.0f * u, 0.12f));
+    g.setColour (juce::Colours::white);
+    g.drawText (hzText (get (ids::peqFreq[band])), zFreq, juce::Justification::centredLeft, false);
+    g.setColour (onirique::look::emberPink);
+    g.drawText (valueText(), zValue, juce::Justification::centredLeft, false);
+    if (ParametricEQ::isCut (type))
     {
-        triangle (g, zUp.withSizeKeepingCentre (zUp.getHeight() * 0.9f, zUp.getHeight() * 0.5f), true, hl (slopeUp));
-        triangle (g, zDown.withSizeKeepingCentre (zDown.getHeight() * 0.9f, zDown.getHeight() * 0.5f), false, hl (slopeDown));
+        const auto cd = button (zDown, false, slopeDown), cu = button (zUp, false, slopeUp);
+        g.setFont (cssFont (ui::Face::mono, 14.0f * u));
+        g.setColour (cd);
+        g.drawText (juce::String::charToString (0x2039), zDown, juce::Justification::centred, false);
+        g.setColour (cu);
+        g.drawText (juce::String::charToString (0x203a), zUp, juce::Justification::centred, false);
+        g.setColour (juce::Colours::white);
+        g.setFont (cssFont (ui::Face::mono, 10.0f * u, 0.12f));
+        g.drawText (kSlopeNames[juce::jlimit (0, 3, juce::roundToInt (get (ids::peqSlope[band])))], zSlope, juce::Justification::centred, false);
     }
-    else
-        triangle (g, juce::Rectangle<float> (zUp.getX(), r3.getY(), zUp.getWidth(), r3.getHeight()).withSizeKeepingCentre (7.0f * u, 4.0f * u), false, hl (typeMenu));
 }
 
 void BandBubble::mouseMove (const juce::MouseEvent& e)
 {
     const int z = (int) zoneAt (e.position);
     if (z != hover) { hover = z; repaint(); }
-    setMouseCursor (z >= 0 ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
+    setMouseCursor (z >= (int) dragFreq ? juce::MouseCursor::UpDownResizeCursor : z >= 0 ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
 }
 
 void BandBubble::mouseDown (const juce::MouseEvent& e)
@@ -1771,7 +1834,7 @@ void BandBubble::mouseDown (const juce::MouseEvent& e)
             repaint();
             break;
         case close:
-            for (auto* id : { ids::peqType[band], ids::peqFreq[band], ids::peqGain[band], ids::peqQ[band], ids::peqSlope[band],
+            for (const auto& id : { ids::peqType[band], ids::peqFreq[band], ids::peqGain[band], ids::peqQ[band], ids::peqSlope[band],
                               ids::peqDyn[band], ids::peqThr[band], ids::peqOn[band] })
                 if (auto* p = apvts.getParameter (id))
                 { p->beginChangeGesture(); p->setValueNotifyingHost (p->getDefaultValue()); p->endChangeGesture(); }
@@ -1781,12 +1844,31 @@ void BandBubble::mouseDown (const juce::MouseEvent& e)
         case slopeUp:   set (ids::peqSlope[band], (float) juce::jmin (3, juce::roundToInt (get (ids::peqSlope[band])) + 1)); break;
         case slopeDown: set (ids::peqSlope[band], (float) juce::jmax (0, juce::roundToInt (get (ids::peqSlope[band])) - 1)); break;
         case typeMenu:  SpectrumAnalyzer::showBandMenu (*this, apvts, band, e.getScreenPosition()); break;
+        case dragFreq: case dragGain: case dragQ:
+        {
+            dragging = zoneAt (e.position);
+            const juce::String id (dragging == dragFreq ? ids::peqFreq[band] : dragging == dragGain ? ids::peqGain[band] : ids::peqQ[band]);
+            if (auto* p = apvts.getParameter (id)) { dragFrom = p->getValue(); p->beginChangeGesture(); }
+            e.source.enableUnboundedMouseMovement (true);
+            break;
+        }
         case none: default: break;
     }
 }
 
 void BandBubble::mouseDrag (const juce::MouseEvent& e)
 {
+    if (dragging != none)
+    {
+        const juce::String id (dragging == dragFreq ? ids::peqFreq[band] : dragging == dragGain ? ids::peqGain[band] : ids::peqQ[band]);
+        if (auto* p = apvts.getParameter (id))
+        {
+            // 200 px pour toute la course (800 avec Maj), vers le haut = plus
+            const float span = e.mods.isShiftDown() ? 800.0f : 200.0f;
+            p->setValueNotifyingHost (juce::jlimit (0.0f, 1.0f, dragFrom - (float) e.getDistanceFromDragStartY() / (span * bubbleUnit() * 1600.0f / 1600.0f)));
+        }
+        return;
+    }
     // casque tenu et souris déplacée : la bande suit la souris en fréquence, on l'entend seule pendant tout le geste
     if (! listening || xOfHz == nullptr || hzOfX == nullptr) return;
     auto* p = apvts.getParameter (ids::peqFreq[band]);
@@ -1803,8 +1885,16 @@ void BandBubble::mouseDrag (const juce::MouseEvent& e)
     p->setValueNotifyingHost (p->convertTo0to1 (hz));
 }
 
-void BandBubble::mouseUp (const juce::MouseEvent&)
+void BandBubble::mouseUp (const juce::MouseEvent& e)
 {
+    if (dragging != none)
+    {
+        const juce::String id (dragging == dragFreq ? ids::peqFreq[band] : dragging == dragGain ? ids::peqGain[band] : ids::peqQ[band]);
+        if (auto* p = apvts.getParameter (id)) p->endChangeGesture();
+        e.source.enableUnboundedMouseMovement (false);
+        dragging = none;
+        return;
+    }
     if (! listening) return;
     if (sweeping)
     {
@@ -1966,11 +2056,19 @@ void BandPanel::tick()
 void BandPanel::paint (juce::Graphics& g)
 {
     const float u = (float) getHeight() / 200.0f;
-    juce::DropShadow (juce::Colours::black.withAlpha (0.6f), juce::roundToInt (22.0f * u), { 0, juce::roundToInt (8.0f * u) }).drawForPath (g, shape);
-    g.setGradientFill (juce::ColourGradient (ui::deep2.withAlpha (0.97f), 0.0f, 0.0f, ui::night.withAlpha (0.97f), 0.0f, (float) getHeight(), false));
+    // le verre de VOCALBOX : ombre douce, fond sombre, voile blanc à 160°, liseré rosé, reflet en haut
+    juce::DropShadow (juce::Colours::black.withAlpha (0.55f), juce::roundToInt (26.0f * u), { 0, juce::roundToInt (10.0f * u) }).drawForPath (g, shape);
+    g.setColour (juce::Colour (0xff0f0b0d).withAlpha (0.92f));
     g.fillPath (shape);
-    g.setColour (ui::line.interpolatedWith (ui::ember, 0.35f));
-    g.strokePath (shape, juce::PathStrokeType (std::max (1.0f, 1.2f * u)));
+    {
+        const auto sb = shape.getBounds();
+        juce::ColourGradient gr (juce::Colours::white.withAlpha (0.075f), sb.getX() + sb.getWidth() * 0.32f, sb.getY(), juce::Colours::white.withAlpha (0.035f), sb.getRight() - sb.getWidth() * 0.32f, sb.getBottom(), false);
+        gr.addColour (0.4, juce::Colours::white.withAlpha (0.02f));
+        g.setGradientFill (gr);
+        g.fillPath (shape);
+    }
+    g.setColour (juce::Colour (0xffffebee).withAlpha (0.12f));
+    g.strokePath (shape, juce::PathStrokeType (std::max (1.0f, 1.0f * u)));
 
     const int type = juce::jlimit (0, 5, shownType < 0 ? 0 : shownType);
     const bool cut = ParametricEQ::isCut (type);
@@ -1979,14 +2077,16 @@ void BandPanel::paint (juce::Graphics& g)
     // type de la bande (menu) + pente
     {
         const auto r = zType;
-        g.setColour (juce::Colours::black.withAlpha (0.35f));
+        g.setColour (juce::Colours::black.withAlpha (0.45f));
         g.fillRoundedRectangle (r, r.getHeight() * 0.5f);
-        g.setColour (hover == typeMenu ? ui::ember : ui::line);
+        g.setGradientFill (juce::ColourGradient (juce::Colours::white.withAlpha (0.06f), 0.0f, r.getY(), juce::Colours::white.withAlpha (0.015f), 0.0f, r.getBottom(), false));
+        g.fillRoundedRectangle (r, r.getHeight() * 0.5f);
+        g.setColour (hover == typeMenu ? onirique::look::emberLit.withAlpha (0.7f) : juce::Colour (0xffffebee).withAlpha (0.12f));
         g.drawRoundedRectangle (r.reduced (0.5f), r.getHeight() * 0.5f, std::max (1.0f, u));
         iconType (g, r.withWidth (r.getHeight() * 1.2f).translated (8.0f * u, 0.0f), type, ui::ember, sw);
         g.setColour (ui::mist);
-        g.setFont (ui::fitFont (ui::Face::body, r.getHeight() * 0.48f, r.getWidth() - r.getHeight() * 1.9f, kTypeNames[type], true));
-        g.drawText (kTypeNames[type], r.withTrimmedLeft (r.getHeight() * 1.2f + 12.0f * u), juce::Justification::centredLeft, false);
+        g.setFont (ui::fitFont (ui::Face::mono, r.getHeight() * 0.40f, r.getWidth() - r.getHeight() * 1.9f, juce::String (kTypeNames[type]).toUpperCase(), false, 0.14f));
+        g.drawText (juce::String (kTypeNames[type]).toUpperCase(), r.withTrimmedLeft (r.getHeight() * 1.2f + 12.0f * u), juce::Justification::centredLeft, false);
         if (cut)
         {
             g.setColour (hover == slopeCycle ? ui::bone : ui::haze);
@@ -2052,7 +2152,9 @@ void IconButton::paintButton (juce::Graphics& g, bool, bool)
     juce::Path shape;
     shape.addRoundedRectangle (b, h * 0.5f);
     ui::strokeGlow (g, shape, ui::ember, 1.2f * u, 0.6f * glow);
-    g.setColour (juce::Colours::black.withAlpha (0.38f));
+    g.setColour (juce::Colours::black.withAlpha (0.45f));
+    g.fillPath (shape);
+    g.setGradientFill (juce::ColourGradient (juce::Colours::white.withAlpha (0.06f), 0.0f, b.getY(), juce::Colours::white.withAlpha (0.015f), 0.0f, b.getBottom(), false));
     g.fillPath (shape);
     g.setColour (ui::ember.withAlpha (0.14f * glow));
     g.fillPath (shape);
@@ -2060,32 +2162,32 @@ void IconButton::paintButton (juce::Graphics& g, bool, bool)
     {
         // allumé (écoute) : pastille braise qui respire doucement
         const float breathe = 0.85f + 0.15f * std::sin ((float) juce::Time::getMillisecondCounter() * 0.004f);
-        g.setGradientFill (juce::ColourGradient (ui::ember.withAlpha (0.75f * lit * breathe), b.getX(), b.getY(),
-                                                 ui::blood.withAlpha (0.8f * lit), b.getRight(), b.getBottom(), false));
+        g.setGradientFill (juce::ColourGradient (ui::ember.withAlpha (0.65f * lit * breathe), 0.0f, b.getY(), onirique::look::emberDeep.withAlpha (0.7f * lit), 0.0f, b.getBottom(), false));
         g.fillPath (shape);
     }
-    g.setColour (ui::line.interpolatedWith (ui::ember, juce::jmax (lit, 0.25f + 0.75f * glow)));
+    g.setColour (ui::line.interpolatedWith (onirique::look::emberLit.withAlpha (0.55f), juce::jmax (lit, 0.25f + 0.75f * glow)));
     g.strokePath (shape, juce::PathStrokeType (std::max (1.0f, 1.2f * u)));
 
     const float s = h * 0.42f;
     const float cx = text.isEmpty() ? b.getCentreX() : b.getX() + h * 0.62f, cy = b.getCentreY();
     if (icon == Icon::headphones)
     {
-        // casque : arceau + deux écouteurs arrondis
-        juce::Path hp;
-        const float r = s * 0.62f;
-        hp.addCentredArc (cx, cy + r * 0.15f, r, r, 0.0f, -kPi * 0.62f, kPi * 0.62f, true);
-        g.setColour (ui::haze.interpolatedWith (ui::bone, juce::jmax (0.45f, juce::jmax (glow, lit))));
-        g.strokePath (hp, juce::PathStrokeType (std::max (1.3f, 1.8f * u), juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-        for (float sx : { -1.0f, 1.0f })
+        // casque : le pictogramme de VOCALBOX (arceau ouvert, écouteurs posés sous l'arceau)
         {
-            const auto cup = juce::Rectangle<float> (r * 0.5f, r * 0.82f).withCentre ({ cx + sx * r * 0.86f, cy + r * 0.62f });
-            g.fillRoundedRectangle (cup, r * 0.2f);
+            const auto ctr = juce::Point<float> (cx, cy);
+            const float rad = s * 0.55f;
+            juce::Path hp;
+            hp.addCentredArc (ctr.x, ctr.y + rad * 0.15f, rad, rad, 0.0f, -1.75f, 1.75f, true);
+            g.setColour (ui::haze.interpolatedWith (ui::bone, juce::jmax (0.45f, juce::jmax (glow, lit))));
+            g.strokePath (hp, juce::PathStrokeType (std::max (1.3f, 1.8f * u), juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+            const float cw = rad * 0.42f, ch = rad * 0.75f;
+            g.fillRoundedRectangle (ctr.x - rad - cw * 0.35f, ctr.y + rad * 0.05f, cw, ch, cw * 0.3f);
+            g.fillRoundedRectangle (ctr.x + rad - cw * 0.65f, ctr.y + rad * 0.05f, cw, ch, cw * 0.3f);
         }
         if (text.isNotEmpty())
         {
             const auto tr = b.withTrimmedLeft (h * 1.15f).withTrimmedRight (h * 0.45f);
-            g.setFont (ui::fitFont (ui::Face::body, h * 0.44f, tr.getWidth(), text, true, 0.10f));
+            g.setFont (ui::fitFont (ui::Face::mono, h * 0.38f, tr.getWidth(), text, false, 0.14f));
             g.drawText (text, tr, juce::Justification::centred, false);
         }
         return;
@@ -2119,7 +2221,7 @@ void IconButton::paintButton (juce::Graphics& g, bool, bool)
     {
         const auto tr = b.withTrimmedLeft (h * 1.15f).withTrimmedRight (h * 0.45f);
         g.setColour (ui::haze.interpolatedWith (ui::bone, juce::jmax (0.5f, glow)));
-        g.setFont (ui::fitFont (ui::Face::body, h * 0.44f, tr.getWidth(), text, true, 0.10f));
+        g.setFont (ui::fitFont (ui::Face::mono, h * 0.38f, tr.getWidth(), text, false, 0.14f));
         g.drawText (text, tr, juce::Justification::centred, false);
     }
 }
@@ -2186,8 +2288,8 @@ void PhaseModeBox::paint (juce::Graphics& g)
     const juce::String t = phaseModeNames()[juce::jlimit (0, 2, shown)];
     auto tr = r.withTrimmedLeft (rad * 1.7f).withTrimmedRight (h * 0.9f);
     g.setColour (ui::mist);
-    g.setFont (ui::fitFont (ui::Face::body, h * 0.46f, tr.getWidth(), t, true, 0.03f));
-    g.drawText (t, tr, juce::Justification::centredLeft, false);
+    g.setFont (ui::fitFont (ui::Face::mono, h * 0.38f, tr.getWidth(), t.toUpperCase(), false, 0.14f));
+    g.drawText (t.toUpperCase(), tr, juce::Justification::centredLeft, false);
 
     const float tx = r.getRight() - h * 0.55f, ty = r.getCentreY();
     juce::Path chev;

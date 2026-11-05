@@ -1,4 +1,5 @@
 #include "PluginEditor.h"
+#include "OniriqueDA.h"
 #include "OniriqueWindowSize.h"
 #include <BinaryData.h>
 
@@ -126,6 +127,13 @@ float OniriqueEQAudioProcessorEditor::top() const noexcept
 
 void OniriqueEQAudioProcessorEditor::timerCallback()
 {
+    // la couleur de l'interface (menu ⋯, ou changée dans un autre plugin ONIRIQUE) : caches vidés, tout se redessine
+    if (onirique::look::changedSince (themeSeen))
+    {
+        backdropLayer = {};
+        std::function<void (juce::Component&)> all = [&all] (juce::Component& k) { k.repaint(); for (auto* ch : k.getChildren()) all (*ch); };
+        all (*this);
+    }
     clock += 1.0 / 60.0;
     ++frame;
     for (auto* a : animated) a->tick();
@@ -192,19 +200,8 @@ void OniriqueEQAudioProcessorEditor::paintBackdrop (juce::Graphics& g)
 {
     const float u = scale();
     const float W = (float) getWidth(), H = (float) getHeight();
-    // DA PRO SERIES : noir profond, lueurs rouges très discrètes, grain fin
-    g.fillAll (ui::night);
-    g.setGradientFill (juce::ColourGradient (ui::blood.withAlpha (0.55f), W * 0.22f, H * 0.45f, ui::night.withAlpha (0.0f), W * 0.22f + W * 0.6f, H * 0.45f, true));
-    g.fillRect (getLocalBounds());
-    g.setGradientFill (juce::ColourGradient (ui::blood.withAlpha (0.22f), W * 0.92f, H * 1.05f, ui::night.withAlpha (0.0f), W * 0.92f - W * 0.45f, H * 1.05f, true));
-    g.fillRect (getLocalBounds());
-    juce::Random rnd (21);
-    for (int i = 0; i < 120; ++i)
-    {
-        const float x = rnd.nextFloat() * W, y = rnd.nextFloat() * H, s = (0.5f + 1.2f * rnd.nextFloat() * rnd.nextFloat()) * u;
-        g.setColour (ui::mist.withAlpha (0.03f + 0.07f * rnd.nextFloat()));
-        g.fillEllipse (x, y, s, s);
-    }
+    // la DA ONIRIQUE (celle de VOCALBOX) : nuit et taches de la couleur de l'interface, floues
+    g.drawImageAt (onirique::da::backdrop (getWidth(), getHeight(), u), 0, 0);
 
     // ce que fait l'EQ, sous la barre (la ligne qui suivait le titre)
     g.setColour (ui::haze.withAlpha (0.8f));

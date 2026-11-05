@@ -32,6 +32,7 @@ private:
     DragValue outputV { processor.apvts, onirique::ids::output, "Output level (after the EQ): drag up/down, double-click = 0 dB." };
     EqFullView eq { processor };
     onirique::nuit::Bar bar;
+    int themeSeen = -1;   // la couleur de l'interface déjà dessinée (OniriqueTheme.h)
 
     std::vector<Animated*> animated;
     juce::Image logo, logoGlow;   // le logo du titre et sa lueur, qui respire

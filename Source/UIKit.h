@@ -1,4 +1,15 @@
 #pragma once
+#if __has_include ("ui/OniriqueTheme.h")
+ #include "ui/OniriqueTheme.h"
+#elif __has_include ("UI/OniriqueTheme.h")
+ #include "UI/OniriqueTheme.h"
+#elif __has_include ("GUI/OniriqueTheme.h")
+ #include "GUI/OniriqueTheme.h"
+#elif __has_include ("../License/OniriqueTheme.h")
+ #include "../License/OniriqueTheme.h"
+#else
+ #include "OniriqueTheme.h"
+#endif
 
 #include "License/LicenseOverlay.h"
 #include "PluginProcessor.h"
@@ -17,13 +28,13 @@ inline constexpr float kEditorBaseW = 1700.0f, kEditorBaseH = 960.0f;
 // blanc cassé pour les textes, gris doux pour le secondaire. Pas de néon : des lueurs discrètes, du verre sombre.
 // (Les noms historiques sont gardés : « ember » est l'accent, « lilac » le reflet clair.)
 inline const juce::Colour night  { 0xff09080A };   // noir profond (fond)
-inline const juce::Colour blood  { 0xff3D0910 };   // rouge sombre (dégradés, profondeur)
+inline const juce::Colour& blood = onirique::look::litBottom;   // rouge sombre (dégradés, profondeur)
 inline const juce::Colour deep   { 0xff121012 };   // charbon très sombre (panneaux)
 inline const juce::Colour deep2  { 0xff1C1517 };   // charbon chaud (menus, info-bulles, panneaux ouverts)
 inline const juce::Colour mist   { 0xffF2ECEC };   // blanc cassé (textes)
 inline const juce::Colour haze   { 0xff978C8F };   // gris doux (informations secondaires)
-inline const juce::Colour ember  { 0xffE5384A };   // rouge ONIRIQUE (accent)
-inline const juce::Colour lilac  { 0xffFFB3BC };   // rose pâle (queues de reverb, reflets, extrémités d'arcs)
+inline const juce::Colour& ember = onirique::look::ember;   // rouge ONIRIQUE (accent)
+inline const juce::Colour& lilac = onirique::look::emberPink;   // rose pâle (queues de reverb, reflets, extrémités d'arcs)
 inline const juce::Colour bone   { 0xffFFF4F5 };   // blanc le plus clair (aiguilles, crêtes)
 inline const juce::Colour mint   { 0xff7DE3B6 };   // témoin discret « ça agit » (comme le voyant d'un rack)
 inline const juce::Colour line   { (juce::uint8) 255, (juce::uint8) 214, (juce::uint8) 218, 0.10f };
@@ -217,8 +228,10 @@ public:
     BandBubble (juce::AudioProcessorValueTreeState&, std::atomic<bool>& listenHold);
     void setBand (int b) { if (b != band) { band = b; shownText.clear(); repaint(); } }
     void setPointsDown (bool down) { if (down != pointsDown) { pointsDown = down; resized(); repaint(); } }
+    void setUnit (float u) { unitHint = u; }   // l'unité de l'analyseur (pour idealWidth avant d'avoir une taille)
     std::function<void()> onRemoved;   // bande retirée (x) : le panneau se ferme
-    // échelle des fréquences de l'analyseur (x dans l'analyseur) : le casque tenu promène la bande en fréquence
+    std::function<void()> onResize;    // le texte a changé de largeur : l'analyseur replace la bulle
+    float idealWidth() const;
     std::function<float (float)> xOfHz, hzOfX;
 
     void paint (juce::Graphics&) override;
@@ -231,19 +244,25 @@ public:
     void mouseUp (const juce::MouseEvent&) override;
 
 private:
-    enum Zone { none = -1, power, listen, close, slopeUp, slopeDown, typeMenu };
+    enum Zone { none = -1, power, listen, close, slopeUp, slopeDown, typeMenu, dragFreq, dragGain, dragQ };
     Zone zoneAt (juce::Point<float>) const noexcept;
-    float get (const char* id) const { return apvts.getRawParameterValue (id)->load(); }
-    void set (const char* id, float v);
+    float get (const juce::String& id) const { return apvts.getRawParameterValue (id)->load(); }
+    void set (const juce::String& id, float v);
+    float bubbleUnit() const { return getHeight() > 0 ? (float) getHeight() / 42.0f : unitHint; }
 
     juce::AudioProcessorValueTreeState& apvts;
     std::atomic<bool>& hold;
     int band = 2, hover = -1;
+    float unitHint = 1.0f;
     bool pointsDown = true, listening = false, listenWas = false;
     bool sweeping = false;
     float sweepStartX = 0.0f;
+    Zone dragging = none;
+    float dragFrom = 0.0f;
+    juce::Rectangle<float> zGain, zQ;
     juce::String shownText;
-    juce::Rectangle<float> box, zPower, zListen, zClose, zUp, zDown, zType;
+    juce::Rectangle<float> box, zPower, zListen, zClose, zUp, zDown, zType, zFreq, zValue, zSlope;
+    juce::String valueText() const;
 };
 
 // Panneau flottant de la bande sélectionnée (en bas de l'analyseur, plein écran) : marche / arrêt, type et pente à gauche ;
