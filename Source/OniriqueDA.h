@@ -5,6 +5,10 @@
  #include "ui/OniriqueTheme.h"
 #elif __has_include ("GUI/OniriqueTheme.h")
  #include "GUI/OniriqueTheme.h"
+#elif __has_include ("../License/OniriqueTheme.h")
+ #include "../License/OniriqueTheme.h"
+#elif __has_include ("../../License/OniriqueTheme.h")
+ #include "../../License/OniriqueTheme.h"
 #else
  #include "OniriqueTheme.h"
 #endif
