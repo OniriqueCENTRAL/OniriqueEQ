@@ -141,14 +141,6 @@ void OniriqueEQAudioProcessorEditor::timerCallback()
     // le logo du titre respire (30 images/s : il respire en 5 s), dans la barre
     if ((frame & 1) == 0)
         bar.repaint (bar.getBrandArea().withY (0).withHeight ((int) kBarH).expanded (10, 0));
-    // le signal qui parcourt la ligne : seulement la zone de l'impulsion, pas toute la largeur
-    {
-        const float u = scale(), W = (float) getWidth(), len = 130.0f * u, span = W - 44.0f * u + len;
-        const float px = 22.0f * u - len + std::fmod ((float) clock * 0.24f, 1.0f) * span;
-        const auto streak = juce::Rectangle<float> (px, signalRect.getY(), len, signalRect.getHeight()).expanded (6.0f * u, 0.0f);
-        repaint (streak.getUnion (lastStreak).getIntersection (signalRect).getSmallestIntegerContainer());
-        lastStreak = streak;
-    }
 }
 
 void OniriqueEQAudioProcessorEditor::resized()
@@ -215,8 +207,9 @@ void OniriqueEQAudioProcessorEditor::paintHeader (juce::Graphics& g)
     const float u = scale();
     const float W = (float) getWidth();
     const float t = (float) clock;
+    juce::ignoreUnused (t);
 
-    // ligne de signal : filet qui s'estompe aux bords + impulsion lumineuse qui la parcourt
+    // ligne de signal : un filet qui s'estompe aux bords (l'impulsion qui la parcourait est retirée)
     const float ly = top() + 86.0f * u;
     juce::ColourGradient cg (juce::Colours::transparentBlack, 22.0f * u, ly, juce::Colours::transparentBlack, W - 22.0f * u, ly, false);
     cg.addColour (0.08, ui::line);
@@ -224,17 +217,6 @@ void OniriqueEQAudioProcessorEditor::paintHeader (juce::Graphics& g)
     g.setGradientFill (cg);
     g.fillRect (juce::Rectangle<float> (22.0f * u, ly, W - 44.0f * u, std::max (1.0f, u)));
 
-    const float len = 130.0f * u;
-    const float span = W - 44.0f * u + len;
-    const float px = 22.0f * u - len + std::fmod (t * 0.24f, 1.0f) * span;
-    const auto streak = juce::Rectangle<float> (px, ly - 1.5f * u, len, 3.5f * u);
-    juce::ColourGradient sg (ui::bone.withAlpha (0.0f), streak.getX(), ly, ui::ember, streak.getRight(), ly, false);
-    sg.addColour (0.6, ui::bone);
-    g.reduceClipRegion (juce::Rectangle<float> (22.0f * u, signalRect.getY(), W - 44.0f * u, signalRect.getHeight()).toNearestInt());
-    g.setColour (ui::ember.withAlpha (0.25f));
-    g.fillRoundedRectangle (streak.expanded (0.0f, 2.5f * u).withTrimmedLeft (len * 0.5f), 3.0f * u);
-    g.setGradientFill (sg);
-    g.fillRoundedRectangle (streak, streak.getHeight() * 0.5f);
 }
 
 float OniriqueEQAudioProcessorEditor::titleWidth() const
