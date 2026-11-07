@@ -765,7 +765,7 @@ void SpectrumAnalyzer::placeBubble()
     bubble.setBand (selected);
     const float u = unit();
     bubble.setUnit (u);
-    const float w = bubble.idealWidth(), bh = 42.0f * u;
+    const float w = bubble.idealWidth(), bh = 52.0f * u;   // 42 de barre et la bosse au-dessus de la valeur
     const auto c = nodePos (selected);
     const auto area = getLocalBounds().toFloat();
     const bool above = c.y - 30.0f * u - bh >= area.getY() + 4.0f;
@@ -1689,7 +1689,7 @@ float BandBubble::idealWidth() const
 void BandBubble::resized()
 {
     const float u = bubbleUnit();
-    box = getLocalBounds().toFloat().reduced (1.0f);
+    box = getLocalBounds().toFloat().reduced (1.0f).withTrimmedTop (10.0f * u);
     const int type = juce::jlimit (0, 5, juce::roundToInt (get (ids::peqType[band])));
     const auto nf = cssFont (ui::Face::display, 12.0f * u), mf = cssFont (ui::Face::mono, 11.0f * u, 0.12f), sf = cssFont (ui::Face::mono, 10.0f * u, 0.12f);
     const float y = box.getCentreY() - 13.0f * u, h = 26.0f * u;
@@ -1729,6 +1729,26 @@ void BandBubble::resized()
     zListen = { x, y, 26.0f * u, h };
     x += 26.0f * u + 10.0f * u;
     zClose = { x, y, 26.0f * u, h };
+
+    // la forme de la bulle du bas (BandPanel) : rectangle arrondi et bosse douce au-dessus de la valeur (gain / Q)
+    outline.clear();
+    const float rad = 16.0f * u, top = box.getY(), ht = top - 9.0f * u;
+    const float hx0 = juce::jmax (box.getX() + rad, zValue.getX() - 16.0f * u), hx1 = juce::jmin (box.getRight() - rad, zValue.getRight() + 16.0f * u);
+    const float ease = juce::jmin (24.0f * u, (hx1 - hx0) * 0.3f);
+    outline.startNewSubPath (box.getX() + rad, top);
+    outline.lineTo (hx0, top);
+    outline.cubicTo (hx0 + ease * 0.55f, top, hx0 + ease * 0.4f, ht, hx0 + ease, ht);
+    outline.lineTo (hx1 - ease, ht);
+    outline.cubicTo (hx1 - ease * 0.4f, ht, hx1 - ease * 0.55f, top, hx1, top);
+    outline.lineTo (box.getRight() - rad, top);
+    outline.quadraticTo (box.getRight(), top, box.getRight(), top + rad);
+    outline.lineTo (box.getRight(), box.getBottom() - rad);
+    outline.quadraticTo (box.getRight(), box.getBottom(), box.getRight() - rad, box.getBottom());
+    outline.lineTo (box.getX() + rad, box.getBottom());
+    outline.quadraticTo (box.getX(), box.getBottom(), box.getX(), box.getBottom() - rad);
+    outline.lineTo (box.getX(), top + rad);
+    outline.quadraticTo (box.getX(), top, box.getX() + rad, top);
+    outline.closeSubPath();
 }
 
 BandBubble::Zone BandBubble::zoneAt (juce::Point<float> p) const noexcept
@@ -1760,13 +1780,19 @@ void BandBubble::paint (juce::Graphics& g)
     const float u = bubbleUnit();
     const int type = juce::jlimit (0, 5, juce::roundToInt (get (ids::peqType[band])));
     const bool on = get (ids::peqOn[band]) > 0.5f;
-    // verre sombre rgba(28,12,16,.86), liseré, reflet du haut
-    g.setColour (juce::Colour (28, 12, 16).withAlpha (0.94f));
-    g.fillRoundedRectangle (box, 16.0f * u);
-    g.setColour (juce::Colour (255, 235, 238).withAlpha (0.12f));
-    g.drawRoundedRectangle (box.reduced (0.5f), 16.0f * u, 1.0f);
-    g.setColour (juce::Colours::white.withAlpha (0.12f));
-    g.fillRect (box.withHeight (1.0f).reduced (16.0f * u, 0.0f).translated (0.0f, 1.0f));
+    // le verre de la bulle du bas : fond sombre, voile blanc en biais, liseré rosé, sa bosse au-dessus de la valeur
+    g.setColour (juce::Colour (0xff0f0b0d).withAlpha (0.94f));
+    g.fillPath (outline);
+    {
+        const auto sb = outline.getBounds();
+        juce::ColourGradient gr (juce::Colours::white.withAlpha (0.075f), sb.getX() + sb.getWidth() * 0.32f, sb.getY(),
+                                 juce::Colours::white.withAlpha (0.035f), sb.getRight() - sb.getWidth() * 0.32f, sb.getBottom(), false);
+        gr.addColour (0.4, juce::Colours::white.withAlpha (0.02f));
+        g.setGradientFill (gr);
+        g.fillPath (outline);
+    }
+    g.setColour (juce::Colour (0xffffebee).withAlpha (0.12f));
+    g.strokePath (outline, juce::PathStrokeType (1.0f));
 
     // petits boutons (.tbtn2) : 26 x 26, rayon 9 ; allumé : braise .55 et lueur
     auto button = [&] (juce::Rectangle<float> r, bool lit, Zone z)

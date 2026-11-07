@@ -248,7 +248,8 @@ private:
     Zone zoneAt (juce::Point<float>) const noexcept;
     float get (const juce::String& id) const { return apvts.getRawParameterValue (id)->load(); }
     void set (const juce::String& id, float v);
-    float bubbleUnit() const { return getHeight() > 0 ? (float) getHeight() / 42.0f : unitHint; }
+    float bubbleUnit() const { return getHeight() > 0 ? (float) getHeight() / 52.0f : unitHint; }   // 42 de barre + 10 de bosse
+    juce::Path outline;   // la forme de la bulle du bas : verre arrondi, bosse douce au-dessus de la valeur
 
     juce::AudioProcessorValueTreeState& apvts;
     std::atomic<bool>& hold;
