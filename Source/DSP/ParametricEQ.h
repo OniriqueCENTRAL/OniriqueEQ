@@ -26,6 +26,8 @@ namespace onirique
     3 ms / 90 ms, liaison stéréo. Le gain appliqué glisse de 0 dB (au seuil) jusqu'au gain réglé (9 dB au-dessus),
     genou doux, lissé sur 4 ms ; les coefficients suivent toutes les 8 échantillons. Une coupe dynamique ne creuse
     que quand la résonance / la dureté apparaît : la voix garde son corps le reste du temps.
+    SIDECHAIN (par bande) : en INT, le détecteur écoute le signal de la bande ; en EXT, l'entrée sidechain du plugin (le kick,
+    la prod...) : la bande ne creuse ou ne monte que quand ce signal-là dépasse le seuil.
 
     Réglages lissés (pas d'escalier en tournant un bouton), activation et passage statique / dynamique en fondu.
 */
@@ -44,6 +46,7 @@ public:
         int slope = 0;                 // 0..3 : 12 / 24 / 36 / 48 dB/oct (coupe-bas / coupe-haut)
         bool dyn = false;              // mode dynamique (cloche, shelfs)
         float thrDb = -30.0f;
+        bool scExt = false;            // SIDECHAIN : le détecteur écoute l'entrée sidechain du plugin (sinon le signal de la bande)
     };
 
     static bool hasGain (int type) noexcept      { return type == bell || type == lowShelf || type == highShelf; }
@@ -185,13 +188,16 @@ public:
             }
             s.dyn = v.dyn && canBeDynamic (type);
             s.thr = juce::jlimit (-80.0f, 0.0f, v.thrDb);
+            if (v.scExt != s.scExt) { s.scExt = v.scExt; s.det.reset(); }   // l'autre source : le détecteur repart à zéro
             if (snap) { s.f.setCurrentAndTargetValue (f); s.g.setCurrentAndTargetValue (g); s.q.setCurrentAndTargetValue (q);
                         s.mix.setCurrentAndTargetValue (m); s.dynS = s.dyn ? 0.0f : 1.0f; s.dirty = s.detDirty = true; }
             else      { s.f.setTargetValue (f); s.g.setTargetValue (g); s.q.setTargetValue (q); s.mix.setTargetValue (m); }
         }
     }
 
-    void process (float* const* ch, int numCh, int n) noexcept
+    // sc / scCh : l'entrée sidechain (alignée sur le signal), écoutée par les bandes dynamiques en mode EXT ; absente, elles
+    // n'entendent rien et restent au repos
+    void process (float* const* ch, int numCh, int n, const float* const* sc = nullptr, int scCh = 0) noexcept
     {
         for (size_t bi = 0; bi < (size_t) kBands; ++bi)
         {
@@ -215,7 +221,12 @@ public:
                 {
                     if (s.detDirty) updateDetector (s, f, q);
                     float d = 0.0f;
-                    for (int c = 0; c < numCh; ++c) d = std::max (d, std::abs (s.det.process (ch[c][i], c)));
+                    if (s.scExt)
+                    {
+                        if (sc != nullptr) for (int c = 0; c < juce::jmin (2, scCh); ++c) d = std::max (d, std::abs (s.det.process (sc[c][i], c)));
+                    }
+                    else
+                        for (int c = 0; c < numCh; ++c) d = std::max (d, std::abs (s.det.process (ch[c][i], c)));
                     s.env += (d > s.env ? atkC : relC) * (d - s.env);
                 }
 
@@ -277,7 +288,7 @@ private:
         Biquad stage[kMaxStages];
         Biquad det;                    // détecteur du mode dynamique
         int type = bell, slope = 0, nStages = 1, countdown = 0;
-        bool dyn = false, dirty = true, detDirty = true;
+        bool dyn = false, dirty = true, detDirty = true, scExt = false;
         float thr = -30.0f, env = 0.0f, dynS = 1.0f, dynTarget = 1.0f;
         float lf = -1.0f, lg = -100.0f, lq = -1.0f, detF = -1.0f, detQ = -1.0f;
     };

@@ -20,6 +20,8 @@ namespace ids
     inline constexpr const char* peqSlope[8] { "peq1Slope", "peq2Slope", "peq3Slope", "peq4Slope", "peq5Slope", "peq6Slope", "peq7Slope", "peq8Slope" };
     inline constexpr const char* peqDyn[8]   { "peq1Dyn", "peq2Dyn", "peq3Dyn", "peq4Dyn", "peq5Dyn", "peq6Dyn", "peq7Dyn", "peq8Dyn" };
     inline constexpr const char* peqThr[8]   { "peq1Thresh", "peq2Thresh", "peq3Thresh", "peq4Thresh", "peq5Thresh", "peq6Thresh", "peq7Thresh", "peq8Thresh" };
+    // SIDECHAIN d'une bande dynamique : 0 = INT (son propre signal), 1 = EXT (l'entrée sidechain du plugin)
+    inline constexpr const char* peqSc[8]    { "peq1Sidechain", "peq2Sidechain", "peq3Sidechain", "peq4Sidechain", "peq5Sidechain", "peq6Sidechain", "peq7Sidechain", "peq8Sidechain" };
 }
 
 inline const juce::StringArray& phaseModeNames()
@@ -93,6 +95,10 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
             NormalisableRange<float> (-60.0f, 0.0f, 0.1f), -30.0f,
             Attr().withLabel ("dB").withStringFromValueFunction ([] (float v, int) { return String (v, 1) + " dB"; })));
     }
+    // ajoutés en dernier : l'ordre des réglages d'avant (automations, presets) ne bouge pas
+    for (int b = 0; b < 8; ++b)
+        p.push_back (std::make_unique<AudioParameterBool> (ParameterID { ids::peqSc[b], 1 }, "Band " + String (b + 1) + " Sidechain", false,
+            AudioParameterBoolAttributes().withStringFromValueFunction ([] (bool v, int) { return String (v ? "EXT" : "INT"); })));
     return { p.begin(), p.end() };
 }
 } // namespace onirique

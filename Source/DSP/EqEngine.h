@@ -41,6 +41,8 @@ public:
             fir.release();
         latency = mode == 0 ? 0 : fir.getLatency();
         for (auto& d : dryDelay) d.prepare (latency);
+        for (auto& d : scDelay) d.prepare (latency);   // le sidechain, retardé comme le son (FIR) : les bandes dynamiques restent calées
+        scBuf.setSize (2, juce::jmax (1, maxBlock), false, true, true);
         dryBuf.setSize (2, juce::jmax (1, maxBlock), false, true, true);
 
         wetMix.reset (fs, 0.03);
@@ -62,7 +64,8 @@ public:
     int getFirTaps() const noexcept { return mode == 0 ? 0 : fir.getTaps(); }
     float getBandGainDb (int b) const noexcept { return iir.getBandGainDb (b); }
 
-    void process (juce::AudioBuffer<float>& buffer, const Params& p) noexcept
+    // sc / scCh : l'entrée sidechain du plugin (nullptr s'il n'y en a pas), écoutée par les bandes dynamiques en mode EXT
+    void process (juce::AudioBuffer<float>& buffer, const Params& p, const float* const* sc = nullptr, int scCh = 0) noexcept
     {
         const int numCh = juce::jmin (2, buffer.getNumChannels()), n = buffer.getNumSamples();
         if (n <= 0 || numCh <= 0) return;
@@ -86,7 +89,16 @@ public:
             juce::dsp::AudioBlock<float> block (buffer.getArrayOfWritePointers(), (size_t) numCh, (size_t) n);
             fir.process (block);
         }
-        iir.process (buffer.getArrayOfWritePointers(), numCh, n);
+        // le sidechain aligné sur la latence du mode (en ZERO LATENCY, tel quel)
+        const float* scPtr[2] { nullptr, nullptr };
+        const int nSc = sc != nullptr ? juce::jmin (2, scCh) : 0;
+        for (int c = 0; c < nSc; ++c)
+        {
+            float* d = scBuf.getWritePointer (c);
+            for (int i = 0; i < n; ++i) d[i] = scDelay[c].process (sc[c][i]);
+            scPtr[c] = d;
+        }
+        iir.process (buffer.getArrayOfWritePointers(), numCh, n, nSc > 0 ? scPtr : nullptr, nSc);
 
         const bool listening = listenMix.isSmoothing() || listenMix.getTargetValue() > 0.0f;
         for (int i = 0; i < n; ++i)
@@ -137,8 +149,8 @@ private:
     FirEQ fir;
     int mode = 0, latency = 0;
     double fs = 48000.0;
-    DelayLine dryDelay[2];
-    juce::AudioBuffer<float> dryBuf;
+    DelayLine dryDelay[2], scDelay[2];
+    juce::AudioBuffer<float> dryBuf, scBuf;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> wetMix, out, fadeIn, listenMix;
     Biquad listenA, listenB;
     float listenF = -1.0f, listenQ = -1.0f, listenGain = 1.0f;

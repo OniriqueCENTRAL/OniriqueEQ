@@ -1204,7 +1204,8 @@ void PeqBandChip::tick()
     const int type = juce::jlimit (0, 5, juce::roundToInt (apvts.getRawParameterValue (ids::peqType[band])->load()));
     juce::String t = names[type];
     if (ParametricEQ::isCut (type)) t << " " << 12 * (1 + juce::roundToInt (apvts.getRawParameterValue (ids::peqSlope[band])->load()));
-    if (ParametricEQ::canBeDynamic (type) && apvts.getRawParameterValue (ids::peqDyn[band])->load() > 0.5f) t << " DYN";
+    if (ParametricEQ::canBeDynamic (type) && apvts.getRawParameterValue (ids::peqDyn[band])->load() > 0.5f)
+        t << (apvts.getRawParameterValue (ids::peqSc[band])->load() > 0.5f ? " DYN SC" : " DYN");   // SC : réagit au sidechain
     bool changed = t != shownType;
     shownType = t;
     changed |= ui::approach (lit, on ? 1.0f : 0.0f, 0.2f);
@@ -1955,7 +1956,11 @@ BandPanel::BandPanel (juce::AudioProcessorValueTreeState& s) : apvts (s)
         x.powerAtt = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (apvts, ids::peqOn[b], x.power);
         x.dyn.setTooltip (n + " dynamic mode: the bell / shelf only acts when its zone goes above the threshold.");
         x.dynAtt = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (apvts, ids::peqDyn[b], x.dyn);
-        for (juce::Component* c : std::initializer_list<juce::Component*> { x.freq.get(), x.gain.get(), x.q.get(), x.thr.get(), &x.power, &x.dyn })
+        x.sc = std::make_unique<ScSwitch> (apvts, ids::peqSc[b]);
+        x.sc->setTooltip (n + " sidechain (dynamic mode): INT = the band reacts to its own signal; EXT = to the plugin's sidechain input "
+                          "(choose the source in your DAW). SC lights up when a sidechain signal arrives.");
+        x.sc->isLive = [this] { return sidechainLive && sidechainLive(); };
+        for (juce::Component* c : std::initializer_list<juce::Component*> { x.freq.get(), x.gain.get(), x.q.get(), x.thr.get(), x.sc.get(), &x.power, &x.dyn })
             addChildComponent (c);
     }
     setBufferedToImage (true);   // l'analyseur dessous bouge à chaque image : le panneau (ombre comprise) reste une image prête
@@ -1977,7 +1982,7 @@ void BandPanel::setBand (int b)
     {
         auto& x = *sets[(size_t) i];
         const bool v = i == band;
-        for (juce::Component* c : std::initializer_list<juce::Component*> { x.freq.get(), x.gain.get(), x.q.get(), x.thr.get(), &x.power, &x.dyn })
+        for (juce::Component* c : std::initializer_list<juce::Component*> { x.freq.get(), x.gain.get(), x.q.get(), x.thr.get(), x.sc.get(), &x.power, &x.dyn })
             c->setVisible (v);
     }
     shownType = shownSlope = -1;
@@ -2043,6 +2048,8 @@ void BandPanel::resized()
         x.dyn.setBounds (rr.removeFromTop (rowH * 0.85f).toNearestInt());
         rr.removeFromTop (8.0f * u);
         x.thr->setBounds (rr.removeFromTop (rowH * 0.85f).toNearestInt());
+        rr.removeFromTop (8.0f * u);
+        x.sc->setBounds (rr.removeFromTop (rowH * 0.85f).toNearestInt());
     }
 }
 
@@ -2068,7 +2075,7 @@ void BandPanel::tick()
     }
     if (! isVisible()) return;
     auto& x = *sets[(size_t) band];
-    x.freq->tick(); x.gain->tick(); x.q->tick(); x.thr->tick(); x.power.tick(); x.dyn.tick();
+    x.freq->tick(); x.gain->tick(); x.q->tick(); x.thr->tick(); x.sc->tick(); x.power.tick(); x.dyn.tick();
     const int type = juce::roundToInt (get (ids::peqType[band])), slope = juce::roundToInt (get (ids::peqSlope[band]));
     const bool can = ParametricEQ::canBeDynamic (type), dyn = can && get (ids::peqDyn[band]) > 0.5f;
     x.gain->setAlpha (ParametricEQ::hasGain (type) ? 1.0f : 0.3f);
@@ -2076,6 +2083,8 @@ void BandPanel::tick()
     x.dyn.setEnabled (can);
     x.dyn.setAlpha (can ? 1.0f : 0.35f);
     x.thr->setAlpha (dyn ? 1.0f : 0.35f);
+    x.sc->setAlpha (dyn ? 1.0f : 0.35f);   // le sidechain pilote le mode dynamique : actif avec lui
+    x.sc->setEnabled (dyn);
     if (type != shownType || slope != shownSlope) { shownType = type; shownSlope = slope; repaint(); }
 }
 
@@ -2349,6 +2358,7 @@ EqFullView::EqFullView (OniriqueEQAudioProcessor& p) : analyzer (p, true), proce
     children.push_back (&panel);
     panel.onBand = [this] (int b) { selectBand (b); if (onSelect) onSelect (b); };
     panel.onClose = [this] { panel.setOpen (false); };
+    panel.sidechainLive = [this] { return processor.sidechainLive.load (std::memory_order_relaxed); };
     analyzer.onSelect = [this] (int b) { selectBand (b); panel.setOpen (true); if (onSelect) onSelect (b); };
     analyzer.onBackgroundClick = [this] { panel.setOpen (false); };
     selectBand (analyzer.getSelected());
@@ -2532,4 +2542,78 @@ void LevelMeter::paint (juce::Graphics& g)
     g.setColour (maxDb > 0.0f ? ui::bone : ui::mist);
     g.setFont (ui::fitFont (ui::Face::mono, readout.getHeight() * 0.62f, readout.getWidth() - 6.0f * u, txt, true));
     g.drawText (txt, readout, juce::Justification::centred, false);
+}
+
+//==============================================================================
+// SIDECHAIN d'une bande dynamique : SC | INT | EXT
+ScSwitch::ScSwitch (juce::AudioProcessorValueTreeState& s, const juce::String& paramId)
+{
+    param = s.getParameter (paramId);
+    if (param != nullptr)
+        attachment = std::make_unique<juce::ParameterAttachment> (*param, [this] (float v) { ext = v > 0.5f; repaint(); }, nullptr);
+    if (attachment != nullptr) attachment->sendInitialUpdate();
+    pos = ext ? 1.0f : 0.0f;
+    setMouseCursor (juce::MouseCursor::PointingHandCursor);
+}
+
+void ScSwitch::tick()
+{
+    bool changed = ui::approach (pos, ext ? 1.0f : 0.0f, 0.22f);
+    const bool l = isLive && isLive();
+    if (l != live) { live = l; changed = true; }
+    if (changed) repaint();
+}
+
+void ScSwitch::mouseDown (const juce::MouseEvent& e)
+{
+    if (attachment == nullptr || ! isEnabled()) return;
+    // un clic sur INT ou sur EXT choisit ; ailleurs (SC), on bascule
+    const auto r = getLocalBounds().toFloat();
+    const float labelW = r.getHeight() * 1.15f, half = (r.getWidth() - labelW) * 0.5f;
+    bool next = ! ext;
+    if (e.position.x >= labelW) next = e.position.x >= labelW + half;
+    attachment->setValueAsCompleteGesture (next ? 1.0f : 0.0f);
+}
+
+void ScSwitch::paint (juce::Graphics& g)
+{
+    const auto b = getLocalBounds().toFloat();
+    const float u = b.getHeight() / 36.0f;
+    const auto r = b.reduced (2.0f * u);
+    const float rad = r.getHeight() * 0.5f;
+    juce::Path shape;
+    shape.addRoundedRectangle (r, rad);
+    g.setColour (juce::Colours::black.withAlpha (hover ? 0.38f : 0.45f));
+    g.fillPath (shape);
+    g.setGradientFill (juce::ColourGradient (juce::Colours::white.withAlpha (0.06f), 0.0f, r.getY(), juce::Colours::white.withAlpha (0.015f), 0.0f, r.getBottom(), false));
+    g.fillPath (shape);
+    g.setColour (ui::line.interpolatedWith (onirique::look::emberLit.withAlpha (0.5f), hover ? 0.4f : 0.0f));
+    g.strokePath (shape, juce::PathStrokeType (std::max (1.0f, 1.4f * u)));
+
+    // « SC » à gauche : braise quand un sidechain arrive, gris sinon
+    const float labelW = b.getHeight() * 1.15f;
+    const auto label = r.withWidth (labelW - 2.0f * u);
+    g.setColour (live ? ui::ember : ui::haze);
+    g.setFont (ui::fitFont (ui::Face::mono, r.getHeight() * 0.46f, label.getWidth() - 6.0f * u, "SC", true, 0.1f));
+    g.drawText ("SC", label, juce::Justification::centred, false);
+    if (live)
+        g.fillEllipse (juce::Rectangle<float> (4.0f * u, 4.0f * u).withCentre ({ label.getRight() - 3.0f * u, label.getY() + 7.0f * u }));
+
+    // INT | EXT : la pastille braise glisse sous le choix
+    auto seg = r.withTrimmedLeft (labelW - 2.0f * u).reduced (2.0f * u);
+    const float half = seg.getWidth() * 0.5f;
+    const auto pill = juce::Rectangle<float> (seg.getX() + pos * half, seg.getY(), half, seg.getHeight());
+    g.setGradientFill (juce::ColourGradient (ui::ember.withAlpha (0.6f), 0.0f, pill.getY(), onirique::look::emberDeep.withAlpha (0.6f), 0.0f, pill.getBottom(), false));
+    g.fillRoundedRectangle (pill, pill.getHeight() * 0.5f);
+    g.setColour (onirique::look::emberLit.withAlpha (0.5f));
+    g.drawRoundedRectangle (pill.reduced (0.5f), pill.getHeight() * 0.5f, std::max (1.0f, 1.0f * u));
+    const char* names[2] { "INT", "EXT" };
+    for (int i = 0; i < 2; ++i)
+    {
+        const auto t = seg.withX (seg.getX() + (float) i * half).withWidth (half);
+        const float lit = i == 0 ? 1.0f - pos : pos;
+        g.setColour (ui::haze.interpolatedWith (juce::Colours::white, lit));
+        g.setFont (ui::fitFont (ui::Face::mono, seg.getHeight() * 0.5f, t.getWidth() - 6.0f * u, names[i], true, 0.12f));
+        g.drawText (names[i], t, juce::Justification::centred, false);
+    }
 }

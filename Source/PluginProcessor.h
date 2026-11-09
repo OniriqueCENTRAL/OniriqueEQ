@@ -57,11 +57,15 @@ public:
 
     // écoute d'une bande : vraie seulement pendant qu'on tient une bande (casque armé ou non)
     std::atomic<bool> peqListenHold { false };
+    // le DAW envoie un sidechain avec du signal (ces dernières secondes) : l'interface le montre à côté du bouton SIDECHAIN
+    std::atomic<bool> sidechainLive { false };
 
 private:
     onirique::EqEngine::Params readParams() const noexcept;
 
     std::atomic<float>* pPeq[8][8] {};   // on, type, freq, gain, q, pente, dynamique, seuil
+    std::atomic<float>* pSc[8] {};       // sidechain de chaque bande : INT / EXT
+    int scSilentSamples = 0;             // depuis quand le sidechain est muet (sidechainLive)
     std::atomic<float> *pPower = nullptr, *pBypass = nullptr, *pOutput = nullptr, *pMode = nullptr,
                        *pListen = nullptr, *pListenBand = nullptr;
 

@@ -6,7 +6,9 @@ using namespace onirique;
 OniriqueEQAudioProcessor::OniriqueEQAudioProcessor()
     : AudioProcessor (BusesProperties()
                           .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
-                          .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
+                          .withOutput ("Output", juce::AudioChannelSet::stereo(), true)
+                          // SIDECHAIN : l'entrée que les bandes dynamiques en mode EXT écoutent (désactivée tant que le DAW ne l'envoie pas)
+                          .withInput  ("Sidechain", juce::AudioChannelSet::stereo(), false)),
       apvts (*this, nullptr, "STATE", createLayout())
 {
     for (int b = 0; b < 8; ++b)
@@ -14,6 +16,7 @@ OniriqueEQAudioProcessor::OniriqueEQAudioProcessor()
         const char* id[8] { ids::peqOn[b], ids::peqType[b], ids::peqFreq[b], ids::peqGain[b], ids::peqQ[b],
                             ids::peqSlope[b], ids::peqDyn[b], ids::peqThr[b] };
         for (int k = 0; k < 8; ++k) pPeq[b][k] = apvts.getRawParameterValue (id[k]);
+        pSc[b] = apvts.getRawParameterValue (ids::peqSc[b]);
     }
     pPower      = apvts.getRawParameterValue (ids::peqPower);
     pBypass     = apvts.getRawParameterValue (ids::bypass);
@@ -47,6 +50,7 @@ EqEngine::Params OniriqueEQAudioProcessor::readParams() const noexcept
         x.slope  = juce::roundToInt (pPeq[b][5]->load());
         x.dyn    = pPeq[b][6]->load() > 0.5f;
         x.thrDb  = pPeq[b][7]->load();
+        x.scExt  = pSc[b]->load() > 0.5f;
     }
     p.eqOn = pPower->load() > 0.5f;
     p.bypass = pBypass->load() > 0.5f;
@@ -61,7 +65,14 @@ bool OniriqueEQAudioProcessor::isBusesLayoutSupported (const BusesLayout& layout
 {
     const auto& out = layouts.getMainOutputChannelSet();
     if (out != juce::AudioChannelSet::mono() && out != juce::AudioChannelSet::stereo()) return false;
-    return layouts.getMainInputChannelSet() == out;
+    if (layouts.getMainInputChannelSet() != out) return false;
+    // le sidechain : absent, mono ou stéréo
+    if (layouts.inputBuses.size() > 1)
+    {
+        const auto sc = layouts.getChannelSet (true, 1);
+        if (! sc.isDisabled() && sc != juce::AudioChannelSet::mono() && sc != juce::AudioChannelSet::stereo()) return false;
+    }
+    return true;
 }
 
 void OniriqueEQAudioProcessor::configure()
@@ -97,23 +108,41 @@ void OniriqueEQAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     juce::ScopedNoDenormals noDenormals;
 
     const int total = buffer.getNumSamples();
-    const int numCh = juce::jmin (buffer.getNumChannels(), 2);
+    // le son : le bus principal seulement (le sidechain, quand le DAW l'envoie, arrive dans les canaux suivants)
+    auto mainBus = getBusBuffer (buffer, true, 0);
+    const int numCh = juce::jmin (mainBus.getNumChannels(), 2);
 
     for (int c = getTotalNumInputChannels(); c < getTotalNumOutputChannels(); ++c)
         buffer.clear (c, 0, total);
     if (numCh < 1 || total < 1)
         return;
 
+    // SIDECHAIN : l'entrée que les bandes dynamiques en mode EXT écoutent ; « vivant » tant qu'il porte du signal
+    const float* sc[2] { nullptr, nullptr };
+    int scCh = 0;
+    if (getBusCount (true) > 1 && getBus (true, 1) != nullptr && getBus (true, 1)->isEnabled())
+    {
+        auto scBus = getBusBuffer (buffer, true, 1);
+        scCh = juce::jmin (2, scBus.getNumChannels());
+        float pk = 0.0f;
+        for (int c = 0; c < scCh; ++c) { sc[c] = scBus.getReadPointer (c); pk = juce::jmax (pk, scBus.getMagnitude (c, 0, total)); }
+        scSilentSamples = pk > 1.0e-4f ? 0 : juce::jmin (scSilentSamples + total, 1 << 28);
+    }
+    else
+        scSilentSamples = 1 << 28;
+    sidechainLive.store (scCh > 0 && scSilentSamples < (int) (3.0 * getSampleRate()), std::memory_order_relaxed);
+
     // un hôte peut envoyer plus d'échantillons qu'annoncé : traité par morceaux
     const auto params = readParams();
-    float* ch[2] { buffer.getWritePointer (0), numCh > 1 ? buffer.getWritePointer (1) : nullptr };
+    float* ch[2] { mainBus.getWritePointer (0), numCh > 1 ? mainBus.getWritePointer (1) : nullptr };
     inputTap.push (ch[0], ch[1], total);    // analyseur : signal d'entrée
     for (int start = 0; start < total; start += currentBlock)
     {
         const int n = juce::jmin (currentBlock, total - start);
         float* part[2] { ch[0] + start, ch[1] != nullptr ? ch[1] + start : nullptr };
+        const float* scPart[2] { sc[0] != nullptr ? sc[0] + start : nullptr, sc[1] != nullptr ? sc[1] + start : nullptr };
         juce::AudioBuffer<float> view (part, numCh, n);
-        engine.process (view, params);
+        engine.process (view, params, scCh > 0 ? scPart : nullptr, scCh);
     }
     outputTap.push (ch[0], ch[1], total);   // analyseur : signal de sortie
     license.process (buffer, getSampleRate(), isNonRealtime());

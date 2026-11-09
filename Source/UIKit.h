@@ -220,6 +220,26 @@ private:
     bool was = true;
 };
 
+// SIDECHAIN d'une bande dynamique : gélule « SC | INT | EXT ». INT : la bande réagit à son propre signal ; EXT : à l'entrée
+// sidechain du plugin (la source se choisit dans le DAW). Le « SC » s'allume en braise quand un sidechain arrive vraiment.
+class ScSwitch : public juce::Component, public juce::SettableTooltipClient, public Animated
+{
+public:
+    ScSwitch (juce::AudioProcessorValueTreeState&, const juce::String& paramId);
+    std::function<bool()> isLive;   // un sidechain avec du signal arrive (processeur)
+    void paint (juce::Graphics&) override;
+    void tick() override;
+    void mouseDown (const juce::MouseEvent&) override;
+    void mouseEnter (const juce::MouseEvent&) override { hover = true; repaint(); }
+    void mouseExit (const juce::MouseEvent&) override { hover = false; repaint(); }
+
+private:
+    juce::RangedAudioParameter* param = nullptr;
+    std::unique_ptr<juce::ParameterAttachment> attachment;
+    bool ext = false, hover = false, live = false;
+    float pos = 0.0f;   // la pastille braise glisse de INT (0) à EXT (1)
+};
+
 // Bulle au-dessus du point de la bande sélectionnée : marche / arrêt, fréquence, écoute (casque, maintenir), retirer la
 // bande (x) ; Q (et gain) ; pente des coupes (flèches) ou type de la bande (menu). Pointe vers le point de la bande.
 class BandBubble : public juce::Component, public Animated
@@ -279,6 +299,7 @@ public:
     bool isOpen() const noexcept { return open; }
     std::function<void (int)> onBand;     // < >
     std::function<void()> onClose;        // x
+    std::function<bool()> sidechainLive;   // un sidechain avec du signal arrive (le « SC » s'allume)
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -299,6 +320,7 @@ private:
     {
         std::unique_ptr<KnobComponent> freq, gain, q;
         std::unique_ptr<DragValue> thr;
+        std::unique_ptr<ScSwitch> sc;   // SIDECHAIN de la bande dynamique : INT / EXT
         PowerButton power;
         PillToggle dyn { "DYN", PillToggle::Style::mini };
         std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> powerAtt, dynAtt;
