@@ -20,9 +20,21 @@ inline juce::StringArray notStored() { return { ids::bypass, ids::phaseMode, ids
 
 struct B { int type; float freq, gain, q; int slope = 1; bool dyn = false; float thr = -30.0f; };
 
+/** Le mode de traitement qui va avec l'usage d'un preset d'usine : le master en Linear Phase (aucune rotation de phase),
+    les voix, le mix et la basse en Natural Phase (doux, sans pré-écho), le reste (batterie, instruments, effets, nettoyage)
+    en Zero Latency, jouable en direct. Seuls les presets d'usine le choisissent : un preset perso ou l'A/B le laissent. */
+inline int phaseModeFor (int tags)
+{
+    if (tags & mastering) return 2;
+    if (tags & effects) return 0;
+    if (tags & (vocal | mix | bass)) return 1;
+    return 0;
+}
+
 inline PresetBank::Stock preset (const char* name, int tags, std::initializer_list<B> bands)
 {
     PresetBank::Stock s { name, tags, {} };
+    s.values.push_back ({ ids::phaseMode, (float) phaseModeFor (tags) });
     int i = 0;
     for (const auto& b : bands)
     {

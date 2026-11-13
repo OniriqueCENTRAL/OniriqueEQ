@@ -422,7 +422,11 @@ private:
         {
             auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (parameter);
 
-            if (ranged == nullptr || ! isStored (ranged->paramID))
+            if (ranged == nullptr)
+                continue;
+            // un réglage de session (bypass, mode de phase…) ne bouge que si le preset le nomme : un preset d'usine peut
+            // choisir son mode de traitement, un preset perso ou l'A/B (qui ne le gardent pas) le laissent tel quel
+            if (! isStored (ranged->paramID) && ! snapshot.hasProperty (ranged->paramID))
                 continue;
 
             // Ce qu'un preset ne nomme pas revient à sa valeur par défaut : un vieux preset garde son sens
