@@ -23,7 +23,7 @@ namespace onirique
 
     Mode DYNAMIQUE (cloche, shelfs) : la bande ne touche le son que lorsque sa zone dépasse le SEUIL.
     Détecteur : passe-bande (cloche) / passe-bas / passe-haut (shelfs) sur l'entrée de la bande, enveloppe crête
-    3 ms / 90 ms, liaison stéréo. Le gain appliqué glisse de 0 dB (au seuil) jusqu'au gain réglé (9 dB au-dessus),
+    3 ms / 90 ms, liaison stéréo. GAIN reste fixe ; RANGE s'y ajoute en glissant de 0 (au seuil) à RANGE (9 dB au-dessus),
     genou doux, lissé sur 4 ms ; les coefficients suivent toutes les 8 échantillons. Une coupe dynamique ne creuse
     que quand la résonance / la dureté apparaît : la voix garde son corps le reste du temps.
     SIDECHAIN (par bande) : en INT, le détecteur écoute le signal de la bande ; en EXT, l'entrée sidechain du plugin (le kick,
@@ -46,6 +46,7 @@ public:
         int slope = 0;                 // 0..3 : 12 / 24 / 36 / 48 dB/oct (coupe-bas / coupe-haut)
         bool dyn = false;              // mode dynamique (cloche, shelfs)
         float thrDb = -30.0f;
+        float rangeDb = 0.0f;          // mode dynamique : ce qui s'ajoute au GAIN quand la zone dépasse le seuil
         bool scExt = false;            // SIDECHAIN : le détecteur écoute l'entrée sidechain du plugin (sinon le signal de la bande)
     };
 
@@ -157,13 +158,13 @@ public:
         dynC = (float) (1.0 - std::exp (-1.0 / (0.004 * fs)));
         for (auto& s : st)
         {
-            s.f.reset (fs, 0.05); s.g.reset (fs, 0.05); s.q.reset (fs, 0.05); s.mix.reset (fs, 0.03);
+            s.f.reset (fs, 0.05); s.g.reset (fs, 0.05); s.q.reset (fs, 0.05); s.r.reset (fs, 0.05); s.mix.reset (fs, 0.03);
             s.f.setCurrentAndTargetValue (s.f.getTargetValue() > 0.0f ? s.f.getTargetValue() : 1000.0f);
             s.q.setCurrentAndTargetValue (s.q.getTargetValue() > 0.0f ? s.q.getTargetValue() : 1.0f);
             for (auto& b : s.stage) b.reset();
             s.det.reset();
             s.env = 0.0f;
-            s.dynS = s.dyn ? 0.0f : 1.0f;
+            s.dynS = 0.0f;
             s.dirty = true;
             s.detDirty = true;
             s.countdown = 0;
@@ -177,7 +178,7 @@ public:
             auto& s = st[(size_t) i];
             const auto& v = b[(size_t) i];
             const float f = juce::jlimit (20.0f, 20000.0f, v.freq), g = juce::jlimit (-18.0f, 18.0f, v.gainDb),
-                        q = juce::jlimit (0.1f, 10.0f, v.q), m = v.on ? 1.0f : 0.0f;
+                        q = juce::jlimit (0.1f, 10.0f, v.q), m = v.on ? 1.0f : 0.0f, r = juce::jlimit (-18.0f, 18.0f, v.rangeDb);
             const int type = juce::jlimit (0, numTypes - 1, v.type);
             const int ns = numStages (type, v.slope);
             if (type != s.type || v.slope != s.slope)
@@ -190,8 +191,8 @@ public:
             s.thr = juce::jlimit (-80.0f, 0.0f, v.thrDb);
             if (v.scExt != s.scExt) { s.scExt = v.scExt; s.det.reset(); }   // l'autre source : le détecteur repart à zéro
             if (snap) { s.f.setCurrentAndTargetValue (f); s.g.setCurrentAndTargetValue (g); s.q.setCurrentAndTargetValue (q);
-                        s.mix.setCurrentAndTargetValue (m); s.dynS = s.dyn ? 0.0f : 1.0f; s.dirty = s.detDirty = true; }
-            else      { s.f.setTargetValue (f); s.g.setTargetValue (g); s.q.setTargetValue (q); s.mix.setTargetValue (m); }
+                        s.r.setCurrentAndTargetValue (r); s.mix.setCurrentAndTargetValue (m); s.dynS = 0.0f; s.dirty = s.detDirty = true; }
+            else      { s.f.setTargetValue (f); s.g.setTargetValue (g); s.q.setTargetValue (q); s.r.setTargetValue (r); s.mix.setTargetValue (m); }
         }
     }
 
@@ -205,8 +206,8 @@ public:
             if (! s.mix.isSmoothing() && s.mix.getTargetValue() < 0.5f)
             {
                 // bande coupée : rien à calculer (les réglages continuent de glisser vers leur cible)
-                s.f.skip (n); s.g.skip (n); s.q.skip (n);
-                s.dynS = s.dyn ? 0.0f : 1.0f;
+                s.f.skip (n); s.g.skip (n); s.q.skip (n); s.r.skip (n);
+                s.dynS = 0.0f;
                 s.env = 0.0f;
                 gainMeter[bi].store (0.0f, std::memory_order_relaxed);
                 continue;
@@ -215,7 +216,8 @@ public:
             float shown = s.lg > -50.0f ? s.lg : 0.0f;
             for (int i = 0; i < n; ++i)
             {
-                const float f = s.f.getNextValue(), g = s.g.getNextValue(), q = s.q.getNextValue(), m = s.mix.getNextValue();
+                const float f = s.f.getNextValue(), g = s.g.getNextValue(), q = s.q.getNextValue(), m = s.mix.getNextValue(),
+                            r = s.r.getNextValue();
 
                 if (s.dyn)
                 {
@@ -242,9 +244,9 @@ public:
                         s.dynTarget = t * t * (3.0f - 2.0f * t);
                     }
                     else
-                        s.dynTarget = 1.0f;
+                        s.dynTarget = 0.0f;   // statique (ou repassée en statique) : la part dynamique s'efface en douceur
 
-                    const float gEff = g * s.dynS;
+                    const float gEff = juce::jlimit (-36.0f, 36.0f, g + r * s.dynS);
                     if (s.dirty || f != s.lf || std::abs (gEff - s.lg) > 0.01f || q != s.lq)
                     {
                         for (int k = 0; k < s.nStages; ++k)
@@ -284,12 +286,12 @@ private:
     struct State
     {
         juce::SmoothedValue<float, juce::ValueSmoothingTypes::Multiplicative> f { 1000.0f }, q { 1.0f };
-        juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> g, mix;
+        juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> g, r, mix;
         Biquad stage[kMaxStages];
         Biquad det;                    // détecteur du mode dynamique
         int type = bell, slope = 0, nStages = 1, countdown = 0;
         bool dyn = false, dirty = true, detDirty = true, scExt = false;
-        float thr = -30.0f, env = 0.0f, dynS = 1.0f, dynTarget = 1.0f;
+        float thr = -30.0f, env = 0.0f, dynS = 0.0f, dynTarget = 0.0f;
         float lf = -1.0f, lg = -100.0f, lq = -1.0f, detF = -1.0f, detQ = -1.0f;
     };
 

@@ -319,7 +319,7 @@ private:
     struct Set
     {
         std::unique_ptr<KnobComponent> freq, gain, q;
-        std::unique_ptr<DragValue> thr;
+        std::unique_ptr<DragValue> thr, range;
         std::unique_ptr<ScSwitch> sc;   // SIDECHAIN de la bande dynamique : INT / EXT
         PowerButton power;
         PillToggle dyn { "DYN", PillToggle::Style::mini };

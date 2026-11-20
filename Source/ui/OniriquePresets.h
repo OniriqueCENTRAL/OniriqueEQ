@@ -416,8 +416,10 @@ private:
 
     void setCurrentName (const juce::String& name)   { state.state.setProperty (kPresetProperty, name, nullptr); }
 
-    void apply (const juce::ValueTree& snapshot)
+    void apply (const juce::ValueTree& source)
     {
+        auto snapshot = source.createCopy();
+        if (upgrade) upgrade (snapshot);   // un preset d'une version d'avant : converti (le plugin décide comment)
         for (auto* parameter : state.processor.getParameters())
         {
             auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (parameter);
@@ -446,6 +448,9 @@ private:
     inline static const juce::Identifier kPresetProperty { "preset" }, kSlotProperty { "slot" }, kOtherSlot { "OtherSlot" },
                                          kSnapshot { "Snapshot" }, kPluginProperty { "plugin" };
 
+public:
+    std::function<void (juce::ValueTree&)> upgrade;   // posé par le plugin : convertit un preset d'une version d'avant
+private:
     juce::AudioProcessorValueTreeState& state;
     juce::String plugin;
     std::vector<Stock> stock;

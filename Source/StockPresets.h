@@ -42,11 +42,12 @@ inline PresetBank::Stock preset (const char* name, int tags, std::initializer_li
         s.values.push_back ({ ids::peqOn[i], 1.0f });
         s.values.push_back ({ ids::peqType[i], (float) b.type });
         s.values.push_back ({ ids::peqFreq[i], b.freq });
-        s.values.push_back ({ ids::peqGain[i], b.gain });
+        s.values.push_back ({ ids::peqGain[i], b.dyn ? 0.0f : b.gain });   // dynamique : le gain est la part dynamique (RANGE)
         s.values.push_back ({ ids::peqQ[i], b.q });
         s.values.push_back ({ ids::peqSlope[i], (float) b.slope });
         s.values.push_back ({ ids::peqDyn[i], b.dyn ? 1.0f : 0.0f });
         s.values.push_back ({ ids::peqThr[i], b.thr });
+        s.values.push_back ({ ids::peqRange[i], b.dyn ? b.gain : -6.0f });
         ++i;
     }
     return s;

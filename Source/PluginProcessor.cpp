@@ -17,6 +17,7 @@ OniriqueEQAudioProcessor::OniriqueEQAudioProcessor()
                             ids::peqSlope[b], ids::peqDyn[b], ids::peqThr[b] };
         for (int k = 0; k < 8; ++k) pPeq[b][k] = apvts.getRawParameterValue (id[k]);
         pSc[b] = apvts.getRawParameterValue (ids::peqSc[b]);
+        pRange[b] = apvts.getRawParameterValue (ids::peqRange[b]);
     }
     pPower      = apvts.getRawParameterValue (ids::peqPower);
     pBypass     = apvts.getRawParameterValue (ids::bypass);
@@ -25,6 +26,7 @@ OniriqueEQAudioProcessor::OniriqueEQAudioProcessor()
     pListen     = apvts.getRawParameterValue (ids::peqListen);
     pListenBand = apvts.getRawParameterValue (ids::peqListenBand);
     apvts.addParameterListener (ids::phaseMode, this);
+    presets.upgrade = [] (juce::ValueTree& v) { upgradeDynamicBands (v); };   // presets perso, A/B, copier-coller d'avant RANGE
 
     apvts.state.setProperty ("preset", "Init", nullptr);   // l'état de départ : les valeurs par défaut
     eqpresets::importOldUserPresets (presets);
@@ -51,6 +53,7 @@ EqEngine::Params OniriqueEQAudioProcessor::readParams() const noexcept
         x.dyn    = pPeq[b][6]->load() > 0.5f;
         x.thrDb  = pPeq[b][7]->load();
         x.scExt  = pSc[b]->load() > 0.5f;
+        x.rangeDb = pRange[b]->load();
     }
     p.eqOn = pPower->load() > 0.5f;
     p.bypass = pBypass->load() > 0.5f;
@@ -177,6 +180,7 @@ void OniriqueEQAudioProcessor::setStateInformation (const void* data, int size)
             if (! state.hasProperty ("preset") && state.hasProperty ("presetName"))
                 state.setProperty ("preset", state["presetName"], nullptr);
             presets.readState (state);
+            upgradeDynamicBandsState (state);   // un projet d'avant RANGE garde son son
             apvts.replaceState (state);
         }
 }

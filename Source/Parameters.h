@@ -22,6 +22,8 @@ namespace ids
     inline constexpr const char* peqThr[8]   { "peq1Thresh", "peq2Thresh", "peq3Thresh", "peq4Thresh", "peq5Thresh", "peq6Thresh", "peq7Thresh", "peq8Thresh" };
     // SIDECHAIN d'une bande dynamique : 0 = INT (son propre signal), 1 = EXT (l'entrée sidechain du plugin)
     inline constexpr const char* peqSc[8]    { "peq1Sidechain", "peq2Sidechain", "peq3Sidechain", "peq4Sidechain", "peq5Sidechain", "peq6Sidechain", "peq7Sidechain", "peq8Sidechain" };
+    // RANGE d'une bande dynamique : ce que la bande ajoute à son GAIN (fixe) quand sa zone dépasse le seuil
+    inline constexpr const char* peqRange[8] { "peq1Range", "peq2Range", "peq3Range", "peq4Range", "peq5Range", "peq6Range", "peq7Range", "peq8Range" };
 }
 
 inline const juce::StringArray& phaseModeNames()
@@ -99,6 +101,43 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     for (int b = 0; b < 8; ++b)
         p.push_back (std::make_unique<AudioParameterBool> (ParameterID { ids::peqSc[b], 1 }, "Band " + String (b + 1) + " Sidechain", false,
             AudioParameterBoolAttributes().withStringFromValueFunction ([] (bool v, int) { return String (v ? "EXT" : "INT"); })));
+    for (int b = 0; b < 8; ++b)
+        p.push_back (std::make_unique<AudioParameterFloat> (ParameterID { ids::peqRange[b], 1 }, "Band " + String (b + 1) + " Dynamic Range",
+            NormalisableRange<float> (-18.0f, 18.0f, 0.1f), -6.0f, Attr().withLabel ("dB").withStringFromValueFunction (dbText)));
     return { p.begin(), p.end() };
+}
+
+/*  Avant RANGE, en mode dynamique, GAIN était toute la part dynamique (0 dB au repos, GAIN au-dessus du seuil). Maintenant GAIN
+    est fixe et RANGE s'y ajoute au-dessus du seuil : on peut baisser une bande et régler sa réduction dynamique à part.
+    Un réglage enregistré avant (projet, preset perso, A/B, copier-coller) garde son son : GAIN passe dans RANGE, GAIN à 0. */
+inline void upgradeDynamicBands (juce::ValueTree& snapshot)   // un preset : une propriété par réglage
+{
+    if (snapshot.hasProperty (ids::peqRange[0])) return;
+    for (int b = 0; b < 8; ++b)
+        if ((float) snapshot.getProperty (ids::peqDyn[b], 0.0f) > 0.5f)
+        {
+            snapshot.setProperty (ids::peqRange[b], snapshot.getProperty (ids::peqGain[b], 0.0f), nullptr);
+            snapshot.setProperty (ids::peqGain[b], 0.0f, nullptr);
+        }
+}
+inline void upgradeDynamicBandsState (juce::ValueTree& state)   // l'état du projet : des enfants PARAM (id, value)
+{
+    auto find = [&state] (const char* id)
+    {
+        for (auto c : state) if (c.hasType ("PARAM") && c["id"].toString() == id) return c;
+        return juce::ValueTree();
+    };
+    if (find (ids::peqRange[0]).isValid()) return;
+    for (int b = 0; b < 8; ++b)
+    {
+        const auto dyn = find (ids::peqDyn[b]);
+        if (! dyn.isValid() || (float) dyn["value"] <= 0.5f) continue;
+        auto gain = find (ids::peqGain[b]);
+        juce::ValueTree range ("PARAM");
+        range.setProperty ("id", ids::peqRange[b], nullptr);
+        range.setProperty ("value", gain.isValid() ? (float) gain["value"] : 0.0f, nullptr);
+        state.appendChild (range, nullptr);
+        if (gain.isValid()) gain.setProperty ("value", 0.0f, nullptr);
+    }
 }
 } // namespace onirique

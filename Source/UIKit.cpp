@@ -869,7 +869,7 @@ bool SpectrumAnalyzer::updateCurves (double fs)
     for (int b = 0; b < kPeq; ++b)
     {
         const auto& x = bd[(size_t) b];
-        const float s[8] { x.on ? 1.0f : 0.0f, (float) x.type, x.freq, x.gainDb, x.q, (float) x.slope, x.dyn ? 1.0f : 0.0f, liveGain[b] };
+        const float s[8] { x.on ? 1.0f : 0.0f, (float) x.type, x.freq, x.gainDb, x.q, (float) x.slope, x.dyn ? 1000.0f + x.rangeDb : 0.0f, liveGain[b] };
         std::copy (s, s + 8, sig.begin() + b * 8);
     }
     sig[(size_t) kPeq * 8] = (float) selected;
@@ -888,7 +888,9 @@ bool SpectrumAnalyzer::updateCurves (double fs)
         for (int k = 0; k < ns[b]; ++k)
         {
             live[b][k] = ParametricEQ::designStage (fs, x.type, x.freq, liveGain[b], x.q, x.slope, k);
-            maxC[b][k] = ParametricEQ::designStage (fs, x.type, x.freq, x.gainDb, x.q, x.slope, k);
+            // la courbe « au plus fort » : GAIN + RANGE pour une bande dynamique
+            maxC[b][k] = ParametricEQ::designStage (fs, x.type, x.freq, x.dyn && ParametricEQ::canBeDynamic (x.type) ? x.gainDb + x.rangeDb : x.gainDb,
+                                                    x.q, x.slope, k);
         }
     }
     const auto& sb = bd[(size_t) selected];
@@ -987,6 +989,7 @@ onirique::ParametricEQ::Band SpectrumAnalyzer::band (int b) const
     bd.slope = juce::roundToInt (param (ids::peqSlope[b]));
     bd.dyn = param (ids::peqDyn[b]) > 0.5f;
     bd.thrDb = param (ids::peqThr[b]);
+    bd.rangeDb = param (ids::peqRange[b]);
     return bd;
 }
 
@@ -1182,14 +1185,14 @@ void SpectrumAnalyzer::showBandMenu (juce::Component& target, juce::AudioProcess
                             {
                                 const bool nowDyn = get (ids::peqDyn[b]) < 0.5f;
                                 set (ids::peqDyn[b], nowDyn ? 1.0f : 0.0f);
-                                // passage en dynamique d'une bande sans gain : une coupe de départ utile
-                                if (nowDyn && std::abs (get (ids::peqGain[b])) < 0.5f) set (ids::peqGain[b], -4.0f);
+                                // passage en dynamique sans part dynamique : une coupe de départ utile (le GAIN fixe ne bouge pas)
+                                if (nowDyn && std::abs (get (ids::peqRange[b])) < 0.5f) set (ids::peqRange[b], -4.0f);
                                 set (ids::peqOn[b], 1.0f);
                             }
                             else if (r == 100) set (ids::peqOn[b], get (ids::peqOn[b]) > 0.5f ? 0.0f : 1.0f);
                             else if (r == 101)
                                 for (auto* id : { ids::peqType[b], ids::peqFreq[b], ids::peqGain[b], ids::peqQ[b], ids::peqSlope[b],
-                                                  ids::peqDyn[b], ids::peqThr[b], ids::peqOn[b] })
+                                                  ids::peqDyn[b], ids::peqThr[b], ids::peqRange[b], ids::peqOn[b] })
                                     if (auto* p = ap->getParameter (id))
                                     { p->beginChangeGesture(); p->setValueNotifyingHost (p->getDefaultValue()); p->endChangeGesture(); }
                         });
@@ -1411,7 +1414,7 @@ void SpectrumAnalyzer::paintEq (juce::Graphics& g)
         const bool dyn = bd.on && bd.dyn && ParametricEQ::canBeDynamic (bd.type);
         if (dyn)
         {
-            const float y0 = yEq (0.0f);
+            const float y0 = yEq (bd.gainDb + bd.rangeDb);   // jusqu'où la bande va au-dessus du seuil (GAIN + RANGE)
             g.setColour (ui::ember.withAlpha (0.35f));
             g.fillRoundedRectangle (juce::Rectangle<float> (c.x - 1.5f * u, std::min (y0, c.y), 3.0f * u, std::abs (c.y - y0)), 1.5f * u);
             const float yl = yEq (liveGain[b]);
@@ -1862,7 +1865,7 @@ void BandBubble::mouseDown (const juce::MouseEvent& e)
             break;
         case close:
             for (const auto& id : { ids::peqType[band], ids::peqFreq[band], ids::peqGain[band], ids::peqQ[band], ids::peqSlope[band],
-                              ids::peqDyn[band], ids::peqThr[band], ids::peqOn[band] })
+                              ids::peqDyn[band], ids::peqThr[band], ids::peqRange[band], ids::peqOn[band] })
                 if (auto* p = apvts.getParameter (id))
                 { p->beginChangeGesture(); p->setValueNotifyingHost (p->getDefaultValue()); p->endChangeGesture(); }
             set (ids::peqOn[band], 0.0f);
@@ -1947,11 +1950,14 @@ BandPanel::BandPanel (juce::AudioProcessorValueTreeState& s) : apvts (s)
         x.freq = std::make_unique<KnobComponent> (apvts, ids::peqFreq[b], "FREQ", "20", "20k", Layout::textBelow,
                                                   n + " frequency. Double-click = reset.", lnf);
         x.gain = std::make_unique<KnobComponent> (apvts, ids::peqGain[b], "GAIN", "-18", "+18", Layout::textBelow,
-                                                  n + " gain (bell and shelves). Double-click = 0 dB.", lnf, true);
+                                                  n + " gain (bell and shelves), always applied, dynamic or not. Double-click = 0 dB.", lnf, true);
         x.q    = std::make_unique<KnobComponent> (apvts, ids::peqQ[b], "Q", "0.1", "10", Layout::textBelow,
                                                   n + " Q: width of a bell, resonance of a cut. Double-click = reset.", lnf);
         x.thr  = std::make_unique<DragValue> (apvts, ids::peqThr[b], n + " dynamic threshold: the band acts only when its zone goes above it.");
         x.thr->setPrefix ("THR ");
+        x.range = std::make_unique<DragValue> (apvts, ids::peqRange[b], n + " dynamic range: what the band adds to its gain when its zone goes "
+                                               "above the threshold (negative = more cut, positive = more boost). The gain itself stays fixed.");
+        x.range->setPrefix ("RANGE ");
         x.power.setTooltip (n + " on/off.");
         x.powerAtt = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (apvts, ids::peqOn[b], x.power);
         x.dyn.setTooltip (n + " dynamic mode: the bell / shelf only acts when its zone goes above the threshold.");
@@ -1960,7 +1966,7 @@ BandPanel::BandPanel (juce::AudioProcessorValueTreeState& s) : apvts (s)
         x.sc->setTooltip (n + " sidechain (dynamic mode): INT = the band reacts to its own signal; EXT = to the plugin's sidechain input "
                           "(choose the source in your DAW). SC lights up when a sidechain signal arrives.");
         x.sc->isLive = [this] { return sidechainLive && sidechainLive(); };
-        for (juce::Component* c : std::initializer_list<juce::Component*> { x.freq.get(), x.gain.get(), x.q.get(), x.thr.get(), x.sc.get(), &x.power, &x.dyn })
+        for (juce::Component* c : std::initializer_list<juce::Component*> { x.freq.get(), x.gain.get(), x.q.get(), x.thr.get(), x.range.get(), x.sc.get(), &x.power, &x.dyn })
             addChildComponent (c);
     }
     setBufferedToImage (true);   // l'analyseur dessous bouge à chaque image : le panneau (ombre comprise) reste une image prête
@@ -1982,7 +1988,7 @@ void BandPanel::setBand (int b)
     {
         auto& x = *sets[(size_t) i];
         const bool v = i == band;
-        for (juce::Component* c : std::initializer_list<juce::Component*> { x.freq.get(), x.gain.get(), x.q.get(), x.thr.get(), x.sc.get(), &x.power, &x.dyn })
+        for (juce::Component* c : std::initializer_list<juce::Component*> { x.freq.get(), x.gain.get(), x.q.get(), x.thr.get(), x.range.get(), x.sc.get(), &x.power, &x.dyn })
             c->setVisible (v);
     }
     shownType = shownSlope = -1;
@@ -2045,11 +2051,15 @@ void BandPanel::resized()
         x.gain->setBounds (gainR.toNearestInt());
         x.q->setBounds (qR.toNearestInt());
         auto rr = right.withTrimmedTop (rowH + 12.0f * u);
-        x.dyn.setBounds (rr.removeFromTop (rowH * 0.85f).toNearestInt());
+        // DYN et SIDECHAIN côte à côte, puis THR et RANGE : trois lignes dans la colonne de droite
+        auto top = rr.removeFromTop (rowH * 0.85f);
+        x.dyn.setBounds (top.removeFromLeft (top.getWidth() * 0.5f - 3.0f * u).toNearestInt());
+        top.removeFromLeft (6.0f * u);
+        x.sc->setBounds (top.toNearestInt());
         rr.removeFromTop (8.0f * u);
         x.thr->setBounds (rr.removeFromTop (rowH * 0.85f).toNearestInt());
         rr.removeFromTop (8.0f * u);
-        x.sc->setBounds (rr.removeFromTop (rowH * 0.85f).toNearestInt());
+        x.range->setBounds (rr.removeFromTop (rowH * 0.85f).toNearestInt());
     }
 }
 
@@ -2075,7 +2085,7 @@ void BandPanel::tick()
     }
     if (! isVisible()) return;
     auto& x = *sets[(size_t) band];
-    x.freq->tick(); x.gain->tick(); x.q->tick(); x.thr->tick(); x.sc->tick(); x.power.tick(); x.dyn.tick();
+    x.freq->tick(); x.gain->tick(); x.q->tick(); x.thr->tick(); x.range->tick(); x.sc->tick(); x.power.tick(); x.dyn.tick();
     const int type = juce::roundToInt (get (ids::peqType[band])), slope = juce::roundToInt (get (ids::peqSlope[band]));
     const bool can = ParametricEQ::canBeDynamic (type), dyn = can && get (ids::peqDyn[band]) > 0.5f;
     x.gain->setAlpha (ParametricEQ::hasGain (type) ? 1.0f : 0.3f);
@@ -2083,6 +2093,7 @@ void BandPanel::tick()
     x.dyn.setEnabled (can);
     x.dyn.setAlpha (can ? 1.0f : 0.35f);
     x.thr->setAlpha (dyn ? 1.0f : 0.35f);
+    x.range->setAlpha (dyn ? 1.0f : 0.35f);
     x.sc->setAlpha (dyn ? 1.0f : 0.35f);   // le sidechain pilote le mode dynamique : actif avec lui
     x.sc->setEnabled (dyn);
     if (type != shownType || slope != shownSlope) { shownType = type; shownSlope = slope; repaint(); }

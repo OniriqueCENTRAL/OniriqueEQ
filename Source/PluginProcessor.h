@@ -42,6 +42,7 @@ public:
 
     void getStateInformation (juce::MemoryBlock& destData) override;
     void setStateInformation (const void* data, int sizeInBytes) override;
+    std::atomic<float>* pRange[8] {};   // RANGE des bandes dynamiques
 
     juce::AudioProcessorValueTreeState apvts;
     /** Les presets d'usine et ceux de l'utilisateur, la comparaison A/B : ce que montre la barre du haut. */
