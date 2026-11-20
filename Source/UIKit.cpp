@@ -2051,12 +2051,11 @@ void BandPanel::resized()
         x.gain->setBounds (gainR.toNearestInt());
         x.q->setBounds (qR.toNearestInt());
         auto rr = right.withTrimmedTop (rowH + 12.0f * u);
-        // DYN et SIDECHAIN côte à côte, puis THR et RANGE : trois lignes dans la colonne de droite
-        auto top = rr.removeFromTop (rowH * 0.85f);
-        x.dyn.setBounds (top.removeFromLeft (top.getWidth() * 0.5f - 3.0f * u).toNearestInt());
-        top.removeFromLeft (6.0f * u);
-        x.sc->setBounds (top.toNearestInt());
+        // à droite : DYN, THR, RANGE ; le SIDECHAIN à gauche sous le type, à la place de la pente (les coupes, qui ont une
+        // pente, ne sont jamais dynamiques : les deux ne s'affichent jamais en même temps)
+        x.dyn.setBounds (rr.removeFromTop (rowH * 0.85f).toNearestInt());
         rr.removeFromTop (8.0f * u);
+        x.sc->setBounds (zSlope.toNearestInt());
         x.thr->setBounds (rr.removeFromTop (rowH * 0.85f).toNearestInt());
         rr.removeFromTop (8.0f * u);
         x.range->setBounds (rr.removeFromTop (rowH * 0.85f).toNearestInt());
@@ -2094,7 +2093,8 @@ void BandPanel::tick()
     x.dyn.setAlpha (can ? 1.0f : 0.35f);
     x.thr->setAlpha (dyn ? 1.0f : 0.35f);
     x.range->setAlpha (dyn ? 1.0f : 0.35f);
-    x.sc->setAlpha (dyn ? 1.0f : 0.35f);   // le sidechain pilote le mode dynamique : actif avec lui
+    x.sc->setAlpha (dyn ? 1.0f : 0.35f);
+    x.sc->setVisible (! ParametricEQ::isCut (type));   // sa place est celle de la pente des coupes   // le sidechain pilote le mode dynamique : actif avec lui
     x.sc->setEnabled (dyn);
     if (type != shownType || slope != shownSlope) { shownType = type; shownSlope = slope; repaint(); }
 }
