@@ -2373,6 +2373,14 @@ EqFullView::EqFullView (OniriqueEQAudioProcessor& p) : analyzer (p, true), proce
     analyzer.onSelect = [this] (int b) { selectBand (b); panel.setOpen (true); if (onSelect) onSelect (b); };
     analyzer.onBackgroundClick = [this] { panel.setOpen (false); };
     selectBand (analyzer.getSelected());
+
+    // INSTANCES : tous les ONIRIQUE EQ de la session, par-dessus l'analyseur
+    addAndMakeVisible (instancesButton);
+    children.push_back (&instancesButton);
+    instancesButton.setTooltip ("Every ONIRIQUE EQ in your session, one row per track: see all the curves together and shape any of them from here.");
+    instancesButton.onClick = [this] { panel.setOpen (false); instanceList.setOpen (instancesButton.getToggleState()); };
+    addChildComponent (instanceList);
+    instanceList.onClose = [this] { instancesButton.setToggleState (false, juce::dontSendNotification); };
 }
 
 EqFullView::~EqFullView() = default;
@@ -2430,10 +2438,12 @@ void EqFullView::resized()
     power.setBounds (juce::Rectangle<float> (32.0f * u, 32.0f * u).withCentre ({ titleArea.getRight() - 16.0f * u, titleArea.getCentreY() }).toNearestInt());
     listenButton.setBounds (juce::Rectangle<float> (126.0f * u, 30.0f * u).withRightX ((float) power.getX() - 10.0f * u).withY (titleArea.getCentreY() - 15.0f * u).toNearestInt());
     modeBox.setBounds (juce::Rectangle<float> (196.0f * u, 30.0f * u).withRightX ((float) listenButton.getX() - 12.0f * u).withY (titleArea.getCentreY() - 15.0f * u).toNearestInt());
+    instancesButton.setBounds (juce::Rectangle<float> (122.0f * u, 30.0f * u).withRightX ((float) modeBox.getX() - 12.0f * u).withY (titleArea.getCentreY() - 15.0f * u).toNearestInt());
     const float infoX = titleArea.getX() + 24.0f * u + ui::textWidth (ui::font (ui::Face::display, 22.0f * u, true, 0.08f), "PARAMETRIC EQ") + 24.0f * u;
-    infoArea = { infoX, titleArea.getY(), (float) modeBox.getX() - 16.0f * u - infoX, titleArea.getHeight() };
+    infoArea = { infoX, titleArea.getY(), (float) instancesButton.getX() - 16.0f * u - infoX, titleArea.getHeight() };
     r.removeFromTop (8.0f * u);
     analyzer.setBounds (r.toNearestInt());
+    instanceList.setBounds (r.toNearestInt());
 
     // panneau de bande : centré en bas de l'analyseur, au-dessus de l'échelle des fréquences
     const float pw = 760.0f * u, ph = 210.0f * u;

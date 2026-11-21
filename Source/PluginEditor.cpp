@@ -83,6 +83,8 @@ OniriqueEQAudioProcessorEditor::OniriqueEQAudioProcessorEditor (OniriqueEQAudioP
         processor.presets.load ("Vocal Clarity");
     if (test.contains ("panel"))
         eq.showBandPanel (0);
+    if (test.contains ("instances"))
+        eq.openInstances();
     // ONIRIQUE_UI_PNG=fichier.png : une image de l'interface (x2, moteur logiciel de JUCE), navigateur ou menu ouverts
     if (const auto png = juce::SystemStats::getEnvironmentVariable ("ONIRIQUE_UI_PNG", {}); png.isNotEmpty())
     {

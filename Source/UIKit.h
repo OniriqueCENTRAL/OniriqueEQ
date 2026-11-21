@@ -487,6 +487,69 @@ private:
 };
 
 // L'EQ (page principale) : titre + choix du traitement et filtres utilisés, grand analyseur, les 8 bandes réglables.
+// TOUS LES ONIRIQUE EQ DE LA SESSION (bouton INSTANCES) : une ligne par EQ, avec le nom et la couleur de sa piste quand le DAW
+// les donne, sa courbe et son spectre de sortie. Les points se règlent d'ici sur n'importe quel EQ (glisser : fréquence et
+// gain, molette : Q). À droite, la liste des noms : un clic amène la ligne de cet EQ. (InstanceList.cpp, Instances.h)
+class InstanceList : public juce::Component, private juce::Timer
+{
+public:
+    explicit InstanceList (OniriqueEQAudioProcessor&);
+    ~InstanceList() override;
+    void setOpen (bool);
+    bool isOpen() const noexcept { return open; }
+    std::function<void()> onClose;   // fermée par sa croix
+
+    void paint (juce::Graphics&) override;
+    void mouseMove (const juce::MouseEvent&) override;
+    void mouseExit (const juce::MouseEvent&) override;
+    void mouseDown (const juce::MouseEvent&) override;
+    void mouseDrag (const juce::MouseEvent&) override;
+    void mouseUp (const juce::MouseEvent&) override;
+    void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
+
+private:
+    static constexpr int kPts = 160, kFftOrder = 11, kFft = 1 << kFftOrder;
+    static constexpr float kRowH = 132.0f;
+    struct Row
+    {
+        int id = 0;
+        bool self = false, power = true;
+        juce::String name;
+        juce::Colour colour;
+        double fs = 48000.0;
+        std::array<onirique::ParametricEQ::Band, 8> bands {};
+        std::array<float, 8> live {};
+        std::array<float, kPts> curve {};
+    };
+    struct Spectrum
+    {
+        std::vector<float> hist;
+        int pos = 0, fresh = 0;
+        std::array<float, kPts> db {};
+    };
+
+    void timerCallback() override;
+    void refresh();
+    void analyse (Spectrum&, double fs);
+    void paintRow (juce::Graphics&, const Row&, int index);
+    bool hit (juce::Point<float>, int& row, int& band) const;
+    void setOn (int id, const char* param, float value, bool begin, bool end);
+    float unit() const;
+    float rowStep() const;
+    juce::Rectangle<float> listArea() const, namesArea() const, rowRect (int) const, plotRect (int) const;
+    juce::Point<float> nodePos (const Row&, int band, juce::Rectangle<float> plot) const;
+
+    OniriqueEQAudioProcessor& processor;
+    std::vector<Row> rows;
+    std::map<int, Spectrum> spectra;
+    juce::dsp::FFT fft { kFftOrder };
+    std::vector<float> window;
+    juce::Rectangle<float> closeRect;
+    float scroll = 0.0f, scrollTarget = 0.0f;
+    int hoverRow = -1, hoverBand = -1, hoverName = -1, dragRow = -1, dragBand = -1, dragIndex = -1;
+    bool open = false, hoverClose = false;
+};
+
 class EqFullView : public juce::Component, public Animated
 {
 public:
@@ -495,6 +558,7 @@ public:
     std::function<void (int)> onSelect;
     void selectBand (int b);
     void showBandPanel (int b) { selectBand (b); panel.setOpen (true); }
+    void openInstances() { instancesButton.setToggleState (true, juce::dontSendNotification); instanceList.setOpen (true); }
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -515,6 +579,8 @@ private:
     IconButton listenButton { IconButton::Icon::headphones };   // écoute de la bande sélectionnée
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> listenAtt;
     BandPanel panel;   // réglages de la bande sélectionnée, flottant en bas de l'analyseur
+    PillToggle instancesButton { "INSTANCES", PillToggle::Style::mini };   // tous les ONIRIQUE EQ de la session
+    InstanceList instanceList { processor };
     std::vector<Animated*> children;
     juce::Rectangle<float> titleArea, infoArea;
     juce::String info;

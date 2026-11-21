@@ -8,6 +8,7 @@
 #include "DSP/EqEngine.h"
 #include "DSP/SpectrumTap.h"
 #include "StockPresets.h"
+#include "Instances.h"
 
 class OniriqueEQAudioProcessor : public juce::AudioProcessor,
                                  private juce::AudioProcessorValueTreeState::Listener,
@@ -43,6 +44,20 @@ public:
     void getStateInformation (juce::MemoryBlock& destData) override;
     void setStateInformation (const void* data, int sizeInBytes) override;
     std::atomic<float>* pRange[8] {};   // RANGE des bandes dynamiques
+
+    // ---- les autres ONIRIQUE EQ de la session (fenêtre INSTANCES)
+    juce::SharedResourcePointer<onirique::EqInstances> instances;
+    int getInstanceId() const noexcept { return instanceId; }
+    void updateTrackProperties (const TrackProperties& p) override
+    {
+        const juce::ScopedLock sl (trackLock);
+        trackName = p.name.value_or (juce::String());
+        trackColour = p.colour.value_or (juce::Colour());
+        hasTrackColour = p.colour.has_value();
+    }
+    juce::String getTrackName() const { const juce::ScopedLock sl (trackLock); return trackName; }
+    bool getTrackColour (juce::Colour& c) const { const juce::ScopedLock sl (trackLock); c = trackColour; return hasTrackColour; }
+    onirique::SpectrumTap shareTap;   // le spectre de sortie, pour la fenêtre INSTANCES d'un autre EQ
 
     juce::AudioProcessorValueTreeState apvts;
     /** Les presets d'usine et ceux de l'utilisateur, la comparaison A/B : ce que montre la barre du haut. */
@@ -80,6 +95,11 @@ private:
 
     onirique::EqEngine engine;
     std::atomic<int> modeNow { 0 }, tapsNow { 0 };
+    int instanceId = 0;
+    juce::CriticalSection trackLock;
+    juce::String trackName;
+    juce::Colour trackColour;
+    bool hasTrackColour = false;
     std::atomic<float> outLevel[2] { { 0.0f }, { 0.0f } };
 
 public:

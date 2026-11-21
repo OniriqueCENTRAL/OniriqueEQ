@@ -53,7 +53,8 @@ juce_add_plugin(OniriqueEQ
 target_sources(OniriqueEQ PRIVATE
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
-    Source/UIKit.cpp)
+    Source/UIKit.cpp
+    Source/InstanceList.cpp)
 
 # logo du site (sigil blanc), intégré au binaire
 juce_add_binary_data(OniriqueAssets SOURCES Resources/logo.png)

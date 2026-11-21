@@ -30,10 +30,12 @@ OniriqueEQAudioProcessor::OniriqueEQAudioProcessor()
 
     apvts.state.setProperty ("preset", "Init", nullptr);   // l'état de départ : les valeurs par défaut
     eqpresets::importOldUserPresets (presets);
+    instanceId = instances->add (this);   // visible dans la fenêtre INSTANCES des autres ONIRIQUE EQ
 }
 
 OniriqueEQAudioProcessor::~OniriqueEQAudioProcessor()
 {
+    instances->remove (instanceId);   // d'abord : plus personne ne lit ni ne règle cet EQ
     apvts.removeParameterListener (ids::phaseMode, this);
     cancelPendingUpdate();
 }
@@ -148,6 +150,7 @@ void OniriqueEQAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
         engine.process (view, params, scCh > 0 ? scPart : nullptr, scCh);
     }
     outputTap.push (ch[0], ch[1], total);   // analyseur : signal de sortie
+    shareTap.push (ch[0], ch[1], total);    // fenêtre INSTANCES (des autres EQ, ou de celui-ci)
     license.process (buffer, getSampleRate(), isNonRealtime());
 
     for (int c = 0; c < numCh; ++c)
